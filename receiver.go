@@ -18,11 +18,8 @@ const (
 	showCursor  = "\033[?25h"
 )
 
-func makeLine(content string) string {
-	// Each line must be exactly: ║ + 64 chars + ║ = 66 total
-	// Pad or truncate content to exactly 64 characters
-	const width = 64
-
+func makeLine(content string, width int) string {
+	// Pad or truncate content to exactly width characters
 	// Handle string length properly (some chars like ° might be multi-byte)
 	runes := []rune(content)
 	if len(runes) > width {
@@ -34,66 +31,69 @@ func makeLine(content string) string {
 	return "║" + content + "║"
 }
 
-func drawTable(counter uint32, temperature, humidity, pressure, altitude, accelX, accelY, accelZ float32, messageCount int, lastUpdate time.Time, packetsLost uint32) {
+func drawTable(counter uint32, temperature, humidity, pressure, altitude, accelX, accelY, accelZ, gyroX, gyroY, gyroZ, roll, pitch, yaw float32, messageCount int, lastUpdate time.Time, packetsLost uint32) {
 	// Move cursor to home and clear
 	fmt.Print(homePos)
 
-	// Box drawing - all lines exactly 66 characters wide
-	fmt.Println("╔════════════════════════════════════════════════════════════════╗")
-	fmt.Println(makeLine("           MAVLink LoRa Receiver - Live Telemetry               "))
-	fmt.Println("╠════════════════════════════════════════════════════════════════╣")
-	fmt.Println(makeLine(" Port: /dev/cu.usbserial-0001                    Baud: 57600    "))
-	fmt.Println("╠════════════════════════════════════════════════════════════════╣")
+	// Box drawing - wider for horizontal layout (80 characters)
+	const width = 78
 
-	// Counter and Messages
-	content := fmt.Sprintf(" Counter:       %-10d                 Messages: %-8d ", counter, messageCount)
-	fmt.Println(makeLine(content))
+	border := "╔" + strings.Repeat("═", width) + "╗"
+	fmt.Println(border)
 
-	// Last Update
-	updateStr := lastUpdate.Format("2006-01-02 15:04:05")
-	content = fmt.Sprintf(" Last Update:   %-47s ", updateStr)
-	fmt.Println(makeLine(content))
+	// Title
+	content := " MAVLink LoRa Receiver - Live Telemetry               /dev/cu.usbserial-0001"
+	fmt.Println(makeLine(content, width))
 
-	// Packets Lost
+	fmt.Println("╠" + strings.Repeat("═", width) + "╣")
+
+	// Status line with counter, messages, packets lost, time
+	updateStr := lastUpdate.Format("15:04:05")
+	lostStr := "None"
 	if packetsLost > 0 {
-		content = fmt.Sprintf(" Packets Lost:  %-46d ", packetsLost)
-	} else {
-		content = " Packets Lost:  None                                            "
+		lostStr = fmt.Sprintf("%d", packetsLost)
 	}
-	fmt.Println(makeLine(content))
+	content = fmt.Sprintf(" Count: %-6d  Msgs: %-6d  Lost: %-6s  Time: %s", counter, messageCount, lostStr, updateStr)
+	fmt.Println(makeLine(content, width))
 
-	fmt.Println("╠════════════════════════════════════════════════════════════════╣")
-	fmt.Println(makeLine("                      SENSOR READINGS                           "))
-	fmt.Println("╠════════════════════════════════════════════════════════════════╣")
+	fmt.Println("╠" + strings.Repeat("═", width) + "╣")
 
-	// Sensor readings with precise formatting
-	content = fmt.Sprintf(" Temperature:   %-10.1f °C                                  ", temperature)
-	fmt.Println(makeLine(content))
+	// Environmental Sensors - Horizontal
+	content = " ENVIRONMENT │ Temp    Humidity  Pressure   Altitude"
+	fmt.Println(makeLine(content, width))
 
-	content = fmt.Sprintf(" Humidity:      %-10.1f %%                                   ", humidity)
-	fmt.Println(makeLine(content))
+	content = fmt.Sprintf(" BMP+AHT     │ %.1f°C  %.1f%%    %.1fhPa  %.1fm MSL",
+		temperature, humidity, pressure, altitude)
+	fmt.Println(makeLine(content, width))
 
-	content = fmt.Sprintf(" Pressure:      %-10.1f hPa                                 ", pressure)
-	fmt.Println(makeLine(content))
+	fmt.Println("╠" + strings.Repeat("═", width) + "╣")
 
-	content = fmt.Sprintf(" Altitude:      %-10.1f m MSL                               ", altitude)
-	fmt.Println(makeLine(content))
+	// IMU - Accelerometer - Horizontal
+	content = " ACCEL (m/s²)│   X        Y        Z"
+	fmt.Println(makeLine(content, width))
 
-	fmt.Println("╠════════════════════════════════════════════════════════════════╣")
-	fmt.Println(makeLine("                   ACCELEROMETER (ADXL345)                      "))
-	fmt.Println("╠════════════════════════════════════════════════════════════════╣")
+	content = fmt.Sprintf(" MPU6050     │ %6.2f   %6.2f   %6.2f", accelX, accelY, accelZ)
+	fmt.Println(makeLine(content, width))
 
-	// Accelerometer data
-	content = fmt.Sprintf(" Accel X:       %-10.2f m/s²                                ", accelX)
-	fmt.Println(makeLine(content))
+	fmt.Println("╟" + strings.Repeat("─", width) + "╢")
 
-	content = fmt.Sprintf(" Accel Y:       %-10.2f m/s²                                ", accelY)
-	fmt.Println(makeLine(content))
+	// IMU - Gyroscope - Horizontal
+	content = " GYRO (°/s)  │   X        Y        Z"
+	fmt.Println(makeLine(content, width))
 
-	content = fmt.Sprintf(" Accel Z:       %-10.2f m/s²                                ", accelZ)
-	fmt.Println(makeLine(content))
+	content = fmt.Sprintf(" MPU6050     │ %6.2f   %6.2f   %6.2f", gyroX, gyroY, gyroZ)
+	fmt.Println(makeLine(content, width))
 
-	fmt.Println("╚════════════════════════════════════════════════════════════════╝")
+	fmt.Println("╠" + strings.Repeat("═", width) + "╣")
+
+	// Orientation - Horizontal
+	content = " ORIENTATION │  Roll     Pitch     Yaw"
+	fmt.Println(makeLine(content, width))
+
+	content = fmt.Sprintf(" RPY (deg)   │ %6.1f°  %6.1f°  %6.1f°", roll, pitch, yaw)
+	fmt.Println(makeLine(content, width))
+
+	fmt.Println("╚" + strings.Repeat("═", width) + "╝")
 	fmt.Println("\nPress Ctrl+C to exit")
 }
 
@@ -132,11 +132,17 @@ func main() {
 	var accelX float32
 	var accelY float32
 	var accelZ float32
+	var gyroX float32
+	var gyroY float32
+	var gyroZ float32
+	var roll float32
+	var pitch float32
+	var yaw float32
 	var lastUpdate time.Time
 	var packetsLost uint32
 
 	// Draw initial table
-	drawTable(counter, temperature, humidity, pressure, altitude, accelX, accelY, accelZ, messageCount, time.Now(), packetsLost)
+	drawTable(counter, temperature, humidity, pressure, altitude, accelX, accelY, accelZ, gyroX, gyroY, gyroZ, roll, pitch, yaw, messageCount, time.Now(), packetsLost)
 
 	// Read messages
 	for evt := range node.Events() {
@@ -164,10 +170,20 @@ func main() {
 				}
 
 			case *common.MessageScaledImu2:
-				// Accelerometer data from ADXL345
+				// IMU data from MPU6050 (accelerometer + gyroscope)
 				accelX = float32(msg.Xacc) / 100.0 // Convert from mG to m/s²
 				accelY = float32(msg.Yacc) / 100.0
 				accelZ = float32(msg.Zacc) / 100.0
+				gyroX = float32(msg.Xgyro) / 17.4533  // Convert from millirad/s to deg/s
+				gyroY = float32(msg.Ygyro) / 17.4533
+				gyroZ = float32(msg.Zgyro) / 17.4533
+				lastUpdate = time.Now()
+
+			case *common.MessageAttitude:
+				// Attitude data (roll, pitch, yaw)
+				roll = msg.Roll * 57.2958   // Convert radians to degrees
+				pitch = msg.Pitch * 57.2958 // Convert radians to degrees
+				yaw = msg.Yaw * 57.2958     // Convert radians to degrees
 				lastUpdate = time.Now()
 
 			case *common.MessageHeartbeat:
@@ -184,7 +200,7 @@ func main() {
 				lastCounter = counter
 
 				// Redraw table on heartbeat (10Hz)
-				drawTable(counter, temperature, humidity, pressure, altitude, accelX, accelY, accelZ, messageCount, lastUpdate, packetsLost)
+				drawTable(counter, temperature, humidity, pressure, altitude, accelX, accelY, accelZ, gyroX, gyroY, gyroZ, roll, pitch, yaw, messageCount, lastUpdate, packetsLost)
 			}
 		}
 	}

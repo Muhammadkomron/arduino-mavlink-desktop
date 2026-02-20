@@ -1,6 +1,6 @@
 /*
- * MAVLink Transmitter with BMP280 + AHT20 + ADXL345 for LR900 LoRa
- * Sends heartbeat, pressure, temperature, humidity, altitude, and accelerometer data (ArduPilot compatible)
+ * MAVLink Transmitter with BMP280 + AHT20 + MPU6050 for LR900 LoRa
+ * Sends heartbeat, pressure, temperature, humidity, altitude, IMU data (ArduPilot compatible)
  *
  * Connections:
  * - LR900 TX → Arduino D2
@@ -9,14 +9,14 @@
  * - LR900 GND → Arduino GND
  * - BMP280: SDA (A4), SCL (A5) - I2C
  * - AHT20: SDA (A4), SCL (A5) - I2C (shared)
- * - ADXL345: SDA (A4), SCL (A5) - I2C (shared)
+ * - MPU6050: SDA (A4), SCL (A5) - I2C (shared)
  */
 
 #include <Wire.h>
 #include <SoftwareSerial.h>
 #include <Adafruit_BMP280.h>
 #include <Adafruit_AHTX0.h>
-#include <Adafruit_ADXL345_U.h>
+#include <MPU6050_light.h>
 #include <MAVLink.h>
 
 // LR900 connected to D2 and D3
@@ -25,7 +25,7 @@ SoftwareSerial lora(2, 3); // RX=D2, TX=D3
 // Sensors
 Adafruit_BMP280 bmp;
 Adafruit_AHTX0 aht;
-Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
+MPU6050 mpu(Wire);
 
 uint32_t counter = 0;
 unsigned long previousMillis = 0;
@@ -56,15 +56,20 @@ void setup() {
   }
   Serial.println(F("BMP280 found!"));
 
-  // Initialize ADXL345
-  if (!accel.begin()) {
-    Serial.println(F("Could not find ADXL345!"));
+  // Initialize MPU6050
+  byte status = mpu.begin();
+  if (status != 0) {
+    Serial.print(F("MPU6050 error code: "));
+    Serial.println(status);
     while (1) delay(10);
   }
-  Serial.println(F("ADXL345 found!"));
+  Serial.println(F("MPU6050 found!"));
 
-  // Set accelerometer range (±2g, ±4g, ±8g, or ±16g)
-  accel.setRange(ADXL345_RANGE_16_G);
+  // Calibrate MPU6050 (keep device still during calibration)
+  Serial.println(F("Calculating offsets, do not move MPU6050"));
+  delay(1000);
+  mpu.calcOffsets();  // Calibrate gyro and accelerometer
+  Serial.println(F("MPU6050 ready!"));
 
   // Configure BMP280
   bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,
@@ -106,12 +111,24 @@ void loop() {
     float pressure = bmp.readPressure() / 100.0F; // Convert to hPa
     float altitude = bmp.readAltitude(1013.25);   // Calculate altitude (sea level pressure)
 
-    // Read ADXL345 sensor
-    sensors_event_t accel_event;
-    accel.getEvent(&accel_event);
-    float accel_x = accel_event.acceleration.x;
-    float accel_y = accel_event.acceleration.y;
-    float accel_z = accel_event.acceleration.z;
+    // Update MPU6050 readings
+    mpu.update();
+
+    // Read accelerometer data (in m/s²)
+    float accel_x = mpu.getAccX() * 9.81;  // Convert from g to m/s²
+    float accel_y = mpu.getAccY() * 9.81;
+    float accel_z = mpu.getAccZ() * 9.81;
+
+    // Read gyroscope data (in deg/s)
+    float gyro_x = mpu.getGyroX();
+    float gyro_y = mpu.getGyroY();
+    float gyro_z = mpu.getGyroZ();
+
+    // Get calculated angles (MPU6050_light uses complementary filter)
+    // Angles are in degrees, convert to radians for MAVLink
+    float roll = mpu.getAngleX() * 0.0174533;   // X angle (roll)
+    float pitch = mpu.getAngleY() * 0.0174533;  // Y angle (pitch)
+    float yaw = mpu.getAngleZ() * 0.0174533;    // Z angle (yaw)
 
     mavlink_message_t msg;
     uint8_t buf[64];  // Smaller buffer to save RAM
@@ -160,7 +177,7 @@ void loop() {
     len = mavlink_msg_to_send_buffer(buf, &msg);
     lora.write(buf, len);
 
-    // 4. Send accelerometer data as SCALED_IMU2
+    // 4. Send IMU data (accelerometer + gyroscope) as SCALED_IMU2
     mavlink_msg_scaled_imu2_pack(
       1,                                        // System ID
       MAV_COMP_ID_AUTOPILOT1,                  // Component ID
@@ -169,9 +186,9 @@ void loop() {
       (int16_t)(accel_x * 100),                // xacc (mG)
       (int16_t)(accel_y * 100),                // yacc (mG)
       (int16_t)(accel_z * 100),                // zacc (mG)
-      0,                                        // xgyro (not used)
-      0,                                        // ygyro (not used)
-      0,                                        // zgyro (not used)
+      (int16_t)(gyro_x * 17.4533),             // xgyro (millirad/s) - convert deg/s to millirad/s
+      (int16_t)(gyro_y * 17.4533),             // ygyro (millirad/s)
+      (int16_t)(gyro_z * 17.4533),             // zgyro (millirad/s)
       0,                                        // xmag (not used)
       0,                                        // ymag (not used)
       0,                                        // zmag (not used)
@@ -181,7 +198,24 @@ void loop() {
     len = mavlink_msg_to_send_buffer(buf, &msg);
     lora.write(buf, len);
 
-    // 5. Send heartbeat with counter
+    // 5. Send attitude (roll, pitch, yaw)
+    mavlink_msg_attitude_pack(
+      1,                                        // System ID
+      MAV_COMP_ID_AUTOPILOT1,                  // Component ID
+      &msg,
+      millis(),                                 // time_boot_ms
+      roll,                                     // roll (radians)
+      pitch,                                    // pitch (radians)
+      yaw,                                      // yaw (radians)
+      0,                                        // rollspeed (rad/s) - not used
+      0,                                        // pitchspeed (rad/s) - not used
+      0                                         // yawspeed (rad/s) - not used
+    );
+
+    len = mavlink_msg_to_send_buffer(buf, &msg);
+    lora.write(buf, len);
+
+    // 6. Send heartbeat with counter
     mavlink_msg_heartbeat_pack(
       1,                              // System ID
       MAV_COMP_ID_AUTOPILOT1,        // Component ID
@@ -200,21 +234,19 @@ void loop() {
     if (counter % 10 == 0) {
       Serial.print(F("#"));
       Serial.print(counter);
-      Serial.print(F(" T:"));
+      Serial.print(F(" R:"));
+      Serial.print(roll * 57.2958, 1);  // Convert to degrees
+      Serial.print(F("° P:"));
+      Serial.print(pitch * 57.2958, 1);
+      Serial.print(F("° Y:"));
+      Serial.print(yaw * 57.2958, 1);
+      Serial.print(F("° | T:"));
       Serial.print(temperature, 1);
       Serial.print(F("C H:"));
       Serial.print(humidity, 1);
-      Serial.print(F("% P:"));
-      Serial.print(pressure, 1);
-      Serial.print(F("hPa Alt:"));
+      Serial.print(F("% Alt:"));
       Serial.print(altitude, 1);
-      Serial.print(F("m Acc:"));
-      Serial.print(accel_x, 2);
-      Serial.print(F(","));
-      Serial.print(accel_y, 2);
-      Serial.print(F(","));
-      Serial.print(accel_z, 2);
-      Serial.println(F("m/s²"));
+      Serial.println(F("m"));
     }
   }
 }
