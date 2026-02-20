@@ -1,6 +1,6 @@
 /*
- * MAVLink Transmitter with BMP280 + AHT20 for LR900 LoRa
- * Sends heartbeat, pressure, temperature, humidity, and altitude data (ArduPilot compatible)
+ * MAVLink Transmitter with BMP280 + AHT20 + ADXL345 for LR900 LoRa
+ * Sends heartbeat, pressure, temperature, humidity, altitude, and accelerometer data (ArduPilot compatible)
  *
  * Connections:
  * - LR900 TX → Arduino D2
@@ -9,12 +9,14 @@
  * - LR900 GND → Arduino GND
  * - BMP280: SDA (A4), SCL (A5) - I2C
  * - AHT20: SDA (A4), SCL (A5) - I2C (shared)
+ * - ADXL345: SDA (A4), SCL (A5) - I2C (shared)
  */
 
 #include <Wire.h>
 #include <SoftwareSerial.h>
 #include <Adafruit_BMP280.h>
 #include <Adafruit_AHTX0.h>
+#include <Adafruit_ADXL345_U.h>
 #include <MAVLink.h>
 
 // LR900 connected to D2 and D3
@@ -23,6 +25,7 @@ SoftwareSerial lora(2, 3); // RX=D2, TX=D3
 // Sensors
 Adafruit_BMP280 bmp;
 Adafruit_AHTX0 aht;
+Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
 
 uint32_t counter = 0;
 unsigned long previousMillis = 0;
@@ -52,6 +55,16 @@ void setup() {
     }
   }
   Serial.println(F("BMP280 found!"));
+
+  // Initialize ADXL345
+  if (!accel.begin()) {
+    Serial.println(F("Could not find ADXL345!"));
+    while (1) delay(10);
+  }
+  Serial.println(F("ADXL345 found!"));
+
+  // Set accelerometer range (±2g, ±4g, ±8g, or ±16g)
+  accel.setRange(ADXL345_RANGE_16_G);
 
   // Configure BMP280
   bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,
@@ -92,6 +105,13 @@ void loop() {
     float temperature = bmp.readTemperature();
     float pressure = bmp.readPressure() / 100.0F; // Convert to hPa
     float altitude = bmp.readAltitude(1013.25);   // Calculate altitude (sea level pressure)
+
+    // Read ADXL345 sensor
+    sensors_event_t accel_event;
+    accel.getEvent(&accel_event);
+    float accel_x = accel_event.acceleration.x;
+    float accel_y = accel_event.acceleration.y;
+    float accel_z = accel_event.acceleration.z;
 
     mavlink_message_t msg;
     uint8_t buf[64];  // Smaller buffer to save RAM
@@ -140,7 +160,28 @@ void loop() {
     len = mavlink_msg_to_send_buffer(buf, &msg);
     lora.write(buf, len);
 
-    // 4. Send heartbeat with counter
+    // 4. Send accelerometer data as SCALED_IMU2
+    mavlink_msg_scaled_imu2_pack(
+      1,                                        // System ID
+      MAV_COMP_ID_AUTOPILOT1,                  // Component ID
+      &msg,
+      millis(),                                 // time_boot_ms
+      (int16_t)(accel_x * 100),                // xacc (mG)
+      (int16_t)(accel_y * 100),                // yacc (mG)
+      (int16_t)(accel_z * 100),                // zacc (mG)
+      0,                                        // xgyro (not used)
+      0,                                        // ygyro (not used)
+      0,                                        // zgyro (not used)
+      0,                                        // xmag (not used)
+      0,                                        // ymag (not used)
+      0,                                        // zmag (not used)
+      0                                         // temperature (not used)
+    );
+
+    len = mavlink_msg_to_send_buffer(buf, &msg);
+    lora.write(buf, len);
+
+    // 5. Send heartbeat with counter
     mavlink_msg_heartbeat_pack(
       1,                              // System ID
       MAV_COMP_ID_AUTOPILOT1,        // Component ID
@@ -167,7 +208,13 @@ void loop() {
       Serial.print(pressure, 1);
       Serial.print(F("hPa Alt:"));
       Serial.print(altitude, 1);
-      Serial.println(F("m"));
+      Serial.print(F("m Acc:"));
+      Serial.print(accel_x, 2);
+      Serial.print(F(","));
+      Serial.print(accel_y, 2);
+      Serial.print(F(","));
+      Serial.print(accel_z, 2);
+      Serial.println(F("m/s²"));
     }
   }
 }

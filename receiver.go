@@ -34,7 +34,7 @@ func makeLine(content string) string {
 	return "║" + content + "║"
 }
 
-func drawTable(counter uint32, temperature, humidity, pressure, altitude float32, messageCount int, lastUpdate time.Time, packetsLost uint32) {
+func drawTable(counter uint32, temperature, humidity, pressure, altitude, accelX, accelY, accelZ float32, messageCount int, lastUpdate time.Time, packetsLost uint32) {
 	// Move cursor to home and clear
 	fmt.Print(homePos)
 
@@ -79,6 +79,20 @@ func drawTable(counter uint32, temperature, humidity, pressure, altitude float32
 	content = fmt.Sprintf(" Altitude:      %-10.1f m MSL                               ", altitude)
 	fmt.Println(makeLine(content))
 
+	fmt.Println("╠════════════════════════════════════════════════════════════════╣")
+	fmt.Println(makeLine("                   ACCELEROMETER (ADXL345)                      "))
+	fmt.Println("╠════════════════════════════════════════════════════════════════╣")
+
+	// Accelerometer data
+	content = fmt.Sprintf(" Accel X:       %-10.2f m/s²                                ", accelX)
+	fmt.Println(makeLine(content))
+
+	content = fmt.Sprintf(" Accel Y:       %-10.2f m/s²                                ", accelY)
+	fmt.Println(makeLine(content))
+
+	content = fmt.Sprintf(" Accel Z:       %-10.2f m/s²                                ", accelZ)
+	fmt.Println(makeLine(content))
+
 	fmt.Println("╚════════════════════════════════════════════════════════════════╝")
 	fmt.Println("\nPress Ctrl+C to exit")
 }
@@ -115,11 +129,14 @@ func main() {
 	var pressure float32
 	var altitude float32
 	var humidity float32
+	var accelX float32
+	var accelY float32
+	var accelZ float32
 	var lastUpdate time.Time
 	var packetsLost uint32
 
 	// Draw initial table
-	drawTable(counter, temperature, humidity, pressure, altitude, messageCount, time.Now(), packetsLost)
+	drawTable(counter, temperature, humidity, pressure, altitude, accelX, accelY, accelZ, messageCount, time.Now(), packetsLost)
 
 	// Read messages
 	for evt := range node.Events() {
@@ -146,6 +163,13 @@ func main() {
 					lastUpdate = time.Now()
 				}
 
+			case *common.MessageScaledImu2:
+				// Accelerometer data from ADXL345
+				accelX = float32(msg.Xacc) / 100.0 // Convert from mG to m/s²
+				accelY = float32(msg.Yacc) / 100.0
+				accelZ = float32(msg.Zacc) / 100.0
+				lastUpdate = time.Now()
+
 			case *common.MessageHeartbeat:
 				// Heartbeat with counter
 				messageCount++
@@ -160,7 +184,7 @@ func main() {
 				lastCounter = counter
 
 				// Redraw table on heartbeat (10Hz)
-				drawTable(counter, temperature, humidity, pressure, altitude, messageCount, lastUpdate, packetsLost)
+				drawTable(counter, temperature, humidity, pressure, altitude, accelX, accelY, accelZ, messageCount, lastUpdate, packetsLost)
 			}
 		}
 	}
