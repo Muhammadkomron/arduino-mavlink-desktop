@@ -1,145 +1,138 @@
-# Arduino MAVLink LoRa Communication System
+# Arduino MAVLink Desktop Telemetry System
 
-This project implements a wireless sensor data transmission system using Arduino Nano, LR900 LoRa module, and MAVLink protocol.
+MAVLink-based telemetry system using LoRa wireless communication for real-time sensor monitoring.
 
-## Hardware Components
+## Overview
 
-- **Arduino Nano**: Microcontroller
-- **LR900**: LoRa wireless module (9600 baud)
-- **AHT20**: Temperature and humidity sensor (I2C)
-- **BMP280**: Pressure and altitude sensor (I2C)
+This project implements a complete telemetry system with:
+- **Transmitter**: Arduino Uno or STM32F401 with multiple sensors
+- **LoRa Communication**: LR900 modules at 57600 baud
+- **Receiver**: Go application for desktop monitoring
+- **Protocol**: MAVLink v2 (ArduPilot compatible)
 
-## Wiring Connections
+## Features
 
-### Arduino Nano Pin Connections:
-- **AHT20**:
-  - SDA → A4
-  - SCL → A5
-  - VCC → 3.3V/5V
-  - GND → GND
+- Real-time sensor data transmission at 10Hz
+- Multi-sensor support (BMP280, AHT20, MPU6050/6500/9250)
+- Temperature, humidity, pressure, altitude monitoring
+- IMU data (accelerometer, gyroscope, magnetometer)
+- Orientation tracking (roll, pitch, yaw)
+- Fail-safe operation (works with missing sensors)
 
-- **BMP280**:
-  - SDA → A4 (shared with AHT20)
-  - SCL → A5 (shared with AHT20)
-  - VCC → 3.3V
-  - GND → GND
+## Hardware Requirements
 
-- **LR900 LoRa Module**:
-  - TX → D3 (Arduino RX)
-  - RX → D2 (Arduino TX)
-  - VCC → 5V
-  - GND → GND
+### Transmitter
+- Arduino Uno or STM32F401CCU6 (WeAct Black Pill)
+- LR900 LoRa module
+- BMP280 (pressure/temperature sensor)
+- AHT20 (humidity sensor)
+- MPU6050/6500/9250 (IMU sensor)
+
+### Receiver
+- LR900 LoRa module
+- USB to serial adapter
 
 ## Project Structure
 
 ```
 arduino-mavlink-desktop/
-│
-├── transmitter/
-│   └── transmitter.ino      # Arduino sketch for data transmission
-│
-├── receiver.go               # Go receiver application
-├── go.mod                    # Go module dependencies
-└── README.md                # This file
+├── arduino/
+│   └── transmitter/          # Arduino Uno transmitter
+│       ├── transmitter.ino   # Arduino sketch
+│       └── README.md         # Arduino-specific docs
+├── stm32/
+│   └── transmitter/          # STM32 transmitter
+│       ├── transmitter.ino   # STM32 sketch
+│       └── README.md         # STM32-specific docs
+├── receiver.go               # Go MAVLink receiver
+└── README.md                 # This file
 ```
 
-## Transmitter Setup (Arduino)
+## Quick Start
 
-1. **Install Arduino Libraries**:
-   ```bash
-   # In Arduino IDE, install these libraries:
-   - Adafruit AHTX0 (via Library Manager)
-   - Adafruit BMP280 (via Library Manager)
-   ```
+### Arduino Transmitter
+See [arduino/transmitter/README.md](arduino/transmitter/README.md)
 
-2. **Sensor Configuration**:
-   - The sketch automatically tries BMP280 at addresses 0x76 and 0x77
-   - For combined AHT20+BMP280 modules, the BMP280 is typically at 0x77
-   - If sensors aren't detected, the sketch will run an I2C scan to show available addresses
+### STM32 Transmitter
+See [stm32/transmitter/README.md](stm32/transmitter/README.md)
 
-3. **Upload the Sketch**:
-   - Open `transmitter/transmitter.ino` in Arduino IDE
-   - Select "Arduino Nano" as board
-   - Select correct COM port
-   - Upload the sketch
+### Receiver
+```bash
+# Run the receiver
+go run receiver.go
 
-## Receiver Setup (Go)
+# Expected output:
+# Temp: 27.0°C | Humidity: 35.8% | Pressure: 973.1 hPa | Altitude: 339.3m
+# Accel: (-0.09, -0.12, 11.27) m/s²
+# Gyro: (-1.32, 1.09, -0.29) °/s
+# Orientation: Roll=-0.6° Pitch=0.5° Yaw=-5.9°
+```
 
-1. **Install Dependencies**:
-   ```bash
-   go mod download
-   ```
+## MAVLink Messages
 
-2. **Run the Receiver**:
-   ```bash
-   go run receiver.go
-   ```
+The system transmits the following MAVLink messages:
+1. `HEARTBEAT` - System status with counter
+2. `SCALED_PRESSURE` - Pressure and temperature
+3. `VFR_HUD` - Altitude data
+4. `NAMED_VALUE_FLOAT` - Humidity readings
+5. `SCALED_IMU2` - Accelerometer and gyroscope
+6. `ATTITUDE` - Roll, pitch, yaw orientation
 
-3. **Select Serial Port**:
-   - The application will list all available ports with details
-   - Enter the port number or full path where LR900 receiver is connected
-   - The receiver will start displaying data in real-time
+## Communication Settings
 
-## Data Transmitted
+- **Baud Rate**: 57600
+- **Update Rate**: 10Hz (100ms interval)
+- **Protocol**: MAVLink v2
 
-The system transmits the following sensor data using MAVLink protocol:
+## Wiring
 
-- **Temperature** (°C) - from AHT20 and BMP280
-- **Humidity** (%) - from AHT20
-- **Pressure** (hPa) - from BMP280
-- **Altitude** (m) - calculated from pressure
-- **Package Count** - incremental counter for each transmission
+### Arduino Uno
+```
+LR900 LoRa:
+  TX → D2 (RX)
+  RX → D3 (TX)
+  VCC → 5V
+  GND → GND
 
-Data is sent every 2 seconds via LoRa at 57600 baud.
+I2C Sensors (A4=SDA, A5=SCL):
+  BMP280: SDA, SCL, VCC (3.3V), GND
+  AHT20: SDA, SCL, VCC (3.3V), GND
+  MPU6050: SDA, SCL, VCC (3.3V), GND
+```
 
-## Data Protocol
+### STM32F401CCU6
+```
+LR900 LoRa:
+  TX → PA10 (RX)
+  RX → PA9 (TX)
+  VCC → 5V
+  GND → GND
 
-Due to memory limitations on Arduino Nano (2KB RAM), the system uses a simple text protocol:
-
-**Format**: `$DATA,package_count,temperature,humidity,pressure,altitude*`
-
-Example: `$DATA,1,25.50,45.20,1013.25,10.50*`
-
-Fields:
-- package_count: Incremental counter
-- temperature: Celsius (2 decimal places)
-- humidity: Percentage (2 decimal places)
-- pressure: hPa (2 decimal places)
-- altitude: meters (2 decimal places)
-
-## LR900 Configuration
-
-The LR900 modules should be pre-configured using the official desktop software. Ensure both transmitter and receiver modules are configured with:
-- Same frequency/channel
-- Same data rate (57600 baud)
-- Same address or broadcast mode
-- Appropriate power settings for your range requirements
+I2C Sensors (PB7=SDA, PB6=SCL):
+  BMP280: SDA, SCL, VCC (3.3V), GND
+  AHT20: SDA, SCL, VCC (3.3V), GND
+  MPU6050/6500: SDA, SCL, VCC (3.3V), GND
+```
 
 ## Troubleshooting
 
-### Sensor Not Found
-- Check I2C connections (SDA/SCL)
-- Verify sensor power supply
-- Try alternative I2C addresses
+### No data received
+1. Check LoRa connections
+2. Verify baud rate is 57600
+3. Check serial port in receiver.go
+4. Ensure transmitter LED is blinking
 
-### No Data Received
-- Verify LR900 module connections
-- Check if both modules are on the same channel
-- Ensure correct baud rate (9600)
-- Check antenna connections
+### Sensor not found
+The system is fail-safe and will continue with available sensors. Check:
+1. I2C wiring (SDA/SCL)
+2. Sensor power (3.3V)
+3. Serial monitor for sensor status messages
 
-### Serial Port Not Found
-- Install appropriate drivers for your USB-Serial adapter
-- Check device manager (Windows) or /dev/ (Linux/Mac)
-- Try different USB ports
-
-## Serial Monitor Output
-
-The Arduino transmitter outputs debug information via Serial Monitor (9600 baud):
-- Sensor readings
-- Package count
-- Connection status
+### MPU sensor issues
+- MPU9250 modules may actually be MPU6500 or MPU6050
+- Code auto-detects chip type (WHO_AM_I register)
+- Magnetometer only available on MPU9250/9255
 
 ## License
 
-This project is for educational purposes. Modify as needed for your application.
+MIT
