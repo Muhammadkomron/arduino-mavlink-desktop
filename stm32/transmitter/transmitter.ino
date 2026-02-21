@@ -453,7 +453,7 @@ void loop() {
     len = mavlink_msg_to_send_buffer(buf, &msg);
     lora.write(buf, len);
 
-    // Compact debug output (every 10th message to reduce RAM usage)
+    // Compact debug output (every 10th message to save RAM usage)
     if (counter % 10 == 0) {
       Serial.print(F("#"));
       Serial.print(counter);
