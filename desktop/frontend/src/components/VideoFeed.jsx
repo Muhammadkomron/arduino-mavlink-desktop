@@ -1,21 +1,33 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 
-export default function VideoFeed() {
+const ExpandIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="15 3 21 3 21 9" />
+    <polyline points="9 21 3 21 3 15" />
+    <line x1="21" y1="3" x2="14" y2="10" />
+    <line x1="3" y1="21" x2="10" y2="14" />
+  </svg>
+);
+
+const CollapseIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="4 14 10 14 10 20" />
+    <polyline points="20 10 14 10 14 4" />
+    <line x1="14" y1="10" x2="21" y2="3" />
+    <line x1="3" y1="21" x2="10" y2="14" />
+  </svg>
+);
+
+export default function VideoFeed({ standalone }) {
   const videoRef = useRef(null);
-  const overlayRef = useRef(null);
-  const dragRef = useRef({ dragging: false, x: 0, y: 0 });
   const [devices, setDevices] = useState([]);
   const [selectedDevice, setSelectedDevice] = useState('');
   const [streaming, setStreaming] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  const [overlayPos, setOverlayPos] = useState({ x: 100, y: 100 });
   const streamRef = useRef(null);
 
-  // Enumerate video devices
   useEffect(() => {
     async function getDevices() {
       try {
-        // Request permission first
         await navigator.mediaDevices.getUserMedia({ video: true });
         const allDevices = await navigator.mediaDevices.enumerateDevices();
         const videoDevices = allDevices.filter(d => d.kind === 'videoinput');
@@ -58,35 +70,8 @@ export default function VideoFeed() {
       videoRef.current.srcObject = null;
     }
     setStreaming(false);
-    setExpanded(false);
   }, []);
 
-  // Assign stream to video element when expanding/collapsing
-  useEffect(() => {
-    if (videoRef.current && streamRef.current) {
-      videoRef.current.srcObject = streamRef.current;
-    }
-  }, [expanded]);
-
-  // Drag logic for overlay
-  const onMouseDown = useCallback((e) => {
-    if (e.target.closest('.video-overlay-close')) return;
-    dragRef.current = { dragging: true, x: e.clientX - overlayPos.x, y: e.clientY - overlayPos.y };
-    const onMove = (ev) => {
-      if (dragRef.current.dragging) {
-        setOverlayPos({ x: ev.clientX - dragRef.current.x, y: ev.clientY - dragRef.current.y });
-      }
-    };
-    const onUp = () => {
-      dragRef.current.dragging = false;
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  }, [overlayPos]);
-
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (streamRef.current) {
@@ -95,45 +80,40 @@ export default function VideoFeed() {
     };
   }, []);
 
-  return (
-    <>
-      <div className="viz-card">
-        <div className="viz-card-header">
-          <h4>Video Feed</h4>
-          {streaming && !expanded && (
-            <button
-              className="video-expand-btn"
-              onClick={() => setExpanded(true)}
-              title="Expand video"
-              style={{ opacity: 1, position: 'static' }}
-            >
-              &#x2197;
-            </button>
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (window.go?.backend?.App?.IsWindowOpen) {
+      window.go.backend.App.IsWindowOpen('video').then(setExpanded).catch(() => {});
+    }
+  }, []);
+
+  const toggleWindow = useCallback(async () => {
+    if (window.go?.backend?.App?.ToggleWindow) {
+      const isNowOpen = await window.go.backend.App.ToggleWindow('video');
+      setExpanded(isNowOpen);
+    } else {
+      window.open(`${window.location.origin}/#video`, 'video-feed', 'width=900,height=600');
+    }
+  }, []);
+
+  if (standalone) {
+    return (
+      <div className="standalone-view">
+        <div className="standalone-view-body" style={{ background: '#000' }}>
+          {streaming ? (
+            <video ref={videoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          ) : (
+            <div className="video-placeholder">
+              {devices.length > 0 ? 'Select a camera and click Start' : 'No video devices found'}
+            </div>
           )}
         </div>
-        <div className="viz-content">
-          <div className="video-container">
-            {streaming && !expanded ? (
-              <video ref={videoRef} autoPlay muted playsInline />
-            ) : expanded ? (
-              <div className="video-placeholder">Video in floating window</div>
-            ) : (
-              <div className="video-placeholder">
-                {devices.length > 0 ? 'Select a camera and click Start' : 'No video devices found'}
-              </div>
-            )}
-            {streaming && !expanded && (
-              <button className="video-expand-btn" onClick={() => setExpanded(true)} title="Pop out">
-                &#x2197;
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="video-select">
+        <div className="standalone-view-footer">
           <select
             value={selectedDevice}
             onChange={e => setSelectedDevice(e.target.value)}
-            style={{ flex: 1, padding: '4px 6px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: '10px' }}
+            style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: '12px' }}
           >
             {devices.length === 0 && <option value="">No cameras</option>}
             {devices.map(d => (
@@ -143,48 +123,53 @@ export default function VideoFeed() {
             ))}
           </select>
           {!streaming ? (
-            <button className="btn btn-primary" onClick={startStream} style={{ fontSize: '10px', padding: '4px 8px' }}>
-              Start
-            </button>
+            <button className="btn btn-primary" onClick={startStream} style={{ fontSize: '11px', padding: '4px 12px' }}>Start</button>
           ) : (
-            <button className="btn btn-danger" onClick={stopStream} style={{ fontSize: '10px', padding: '4px 8px' }}>
-              Stop
-            </button>
+            <button className="btn btn-danger" onClick={stopStream} style={{ fontSize: '11px', padding: '4px 12px' }}>Stop</button>
           )}
         </div>
       </div>
+    );
+  }
 
-      {/* Floating video overlay */}
-      {expanded && streaming && (
-        <div
-          className="video-overlay"
-          ref={overlayRef}
-          style={{
-            left: overlayPos.x,
-            top: overlayPos.y,
-            width: 640,
-            height: 400,
-          }}
-        >
-          <div className="video-overlay-header" onMouseDown={onMouseDown}>
-            <span>Video Feed</span>
-            <button className="video-overlay-close" onClick={() => setExpanded(false)}>
-              &#x2715;
-            </button>
-          </div>
-          <video
-            ref={el => {
-              if (el && streamRef.current) {
-                el.srcObject = streamRef.current;
-              }
-            }}
-            autoPlay
-            muted
-            playsInline
-            style={{ width: '100%', height: 'calc(100% - 32px)', objectFit: 'contain' }}
-          />
+  return (
+    <div className="viz-card">
+      <div className="viz-card-header">
+        <h4>Video Feed</h4>
+        <button className={`viz-expand-btn${expanded ? ' expanded' : ''}`} onClick={toggleWindow} title={expanded ? 'Close window' : 'Open in new window'}>
+          {expanded ? <CollapseIcon /> : <ExpandIcon />}
+        </button>
+      </div>
+      <div className="viz-content">
+        <div className="video-container">
+          {streaming ? (
+            <video ref={videoRef} autoPlay muted playsInline />
+          ) : (
+            <div className="video-placeholder">
+              {devices.length > 0 ? 'Select a camera and click Start' : 'No video devices found'}
+            </div>
+          )}
         </div>
-      )}
-    </>
+      </div>
+      <div className="video-select">
+        <select
+          value={selectedDevice}
+          onChange={e => setSelectedDevice(e.target.value)}
+          style={{ flex: 1, padding: '4px 6px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: '10px' }}
+        >
+          {devices.length === 0 && <option value="">No cameras</option>}
+          {devices.map(d => (
+            <option key={d.deviceId} value={d.deviceId}>
+              {d.label || `Camera ${d.deviceId.slice(0, 8)}`}
+            </option>
+          ))}
+        </select>
+        {!streaming ? (
+          <button className="btn btn-primary" onClick={startStream} style={{ fontSize: '10px', padding: '4px 8px' }}>Start</button>
+        ) : (
+          <button className="btn btn-danger" onClick={stopStream} style={{ fontSize: '10px', padding: '4px 8px' }}>Stop</button>
+        )}
+      </div>
+    </div>
   );
 }

@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 
+const TEAM_ID = import.meta.env.VITE_TEAM_ID || '1003';
+
 export default function Sidebar({ telemetry, connected }) {
   const [ports, setPorts] = useState([]);
   const [selectedPort, setSelectedPort] = useState('');
@@ -66,7 +68,7 @@ export default function Sidebar({ telemetry, connected }) {
 
       <section className="panel">
         <h3>Team Info</h3>
-        <div className="info-row"><span className="label">Team ID</span><span className="value">1003</span></div>
+        <div className="info-row"><span className="label">Team ID</span><span className="value">{TEAM_ID}</span></div>
         <div className="info-row"><span className="label">Packets</span><span className="value">{telemetry.msgCount}</span></div>
         <div className="info-row"><span className="label">Mode</span><span className="value">{telemetry.mode}</span></div>
         <div className="info-row"><span className="label">State</span><span className="value">{telemetry.state}</span></div>
@@ -76,7 +78,7 @@ export default function Sidebar({ telemetry, connected }) {
         <h3>Telemetry</h3>
         <div className="info-row"><span className="label">Voltage</span><span className="value">{telemetry.voltage.toFixed(2)} V</span></div>
         <div className="info-row"><span className="label">Altitude</span><span className="value">{telemetry.altitude.toFixed(1)} m</span></div>
-        <div className="info-row"><span className="label">Pressure</span><span className="value">{telemetry.pressure.toFixed(1)} hPa</span></div>
+        <div className="info-row"><span className="label">Pressure</span><span className="value">{telemetry.pressure.toFixed(0)} hPa</span></div>
         <div className="info-row"><span className="label">Temp</span><span className="value">{telemetry.temperature.toFixed(1)} °C</span></div>
       </section>
 

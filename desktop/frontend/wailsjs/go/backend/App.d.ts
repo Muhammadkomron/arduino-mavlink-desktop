@@ -3,37 +3,50 @@
 import {backend} from '../models';
 import {common} from '../models';
 import {time} from '../models';
+import {context} from '../models';
 
 export function Connect(arg1:string,arg2:number):Promise<void>;
 
 export function Disconnect():Promise<void>;
 
-export function ExportGetTelemetry():Promise<backend.TelemetryData>;
-
-export function ExportProcessAttitude(arg1:common.MessageAttitude):Promise<void>;
-
-export function ExportProcessGpsRawInt(arg1:common.MessageGpsRawInt):Promise<void>;
-
-export function ExportProcessHeartbeat(arg1:number):Promise<void>;
-
-export function ExportProcessNamedValueFloat(arg1:string,arg2:number):Promise<void>;
-
-export function ExportProcessScaledImu2(arg1:common.MessageScaledImu2):Promise<void>;
-
-export function ExportProcessScaledPressure(arg1:common.MessageScaledPressure):Promise<void>;
-
-export function ExportProcessSysStatus(arg1:common.MessageSysStatus):Promise<void>;
-
-export function ExportProcessVfrHud(arg1:common.MessageVfrHud):Promise<void>;
-
-export function ExportSetConnected(arg1:boolean):Promise<void>;
-
-export function ExportSetMissionStart(arg1:time.Time):Promise<void>;
-
 export function GetMissionTime():Promise<string>;
+
+export function GetTeamID():Promise<string>;
+
+export function GetTelemetry():Promise<backend.TelemetryData>;
+
+export function GetViewMode():Promise<string>;
 
 export function IsConnected():Promise<boolean>;
 
+export function IsWindowOpen(arg1:string):Promise<boolean>;
+
 export function ListPorts():Promise<Array<string>>;
 
+export function OpenWindow(arg1:string):Promise<void>;
+
+export function ProcessAttitude(arg1:common.MessageAttitude):Promise<void>;
+
+export function ProcessGpsRawInt(arg1:common.MessageGpsRawInt):Promise<void>;
+
+export function ProcessHeartbeat(arg1:number):Promise<void>;
+
+export function ProcessNamedValueFloat(arg1:string,arg2:number):Promise<void>;
+
+export function ProcessScaledImu2(arg1:common.MessageScaledImu2):Promise<void>;
+
+export function ProcessScaledPressure(arg1:common.MessageScaledPressure):Promise<void>;
+
+export function ProcessSysStatus(arg1:common.MessageSysStatus):Promise<void>;
+
+export function ProcessVfrHud(arg1:common.MessageVfrHud):Promise<void>;
+
 export function SendCommand(arg1:string):Promise<void>;
+
+export function SetConnected(arg1:boolean):Promise<void>;
+
+export function SetMissionStart(arg1:time.Time):Promise<void>;
+
+export function StartupChild(arg1:context.Context):Promise<void>;
+
+export function ToggleWindow(arg1:string):Promise<boolean>;

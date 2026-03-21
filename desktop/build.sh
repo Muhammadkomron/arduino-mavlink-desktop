@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
 APP_NAME="NazarX-Ground-Station"
+APP_DISPLAY_NAME="NazarX Ground Station"
 OUTPUT_DIR="build/bin"
 
 echo "========================================"
@@ -78,7 +79,8 @@ build_mac() {
     fi
 
     # Create DMG
-    local app_path="$OUTPUT_DIR/${APP_NAME}.app"
+    # Wails outputs "NazarX Ground Station.app" (with spaces)
+    local app_path="$OUTPUT_DIR/${APP_DISPLAY_NAME}.app"
     local dmg_path="$OUTPUT_DIR/${APP_NAME}-macOS-${goarch}.dmg"
 
     if [ -d "$app_path" ]; then
@@ -87,10 +89,32 @@ build_mac() {
 
         # Create DMG
         rm -f "$dmg_path"
-        hdiutil create -volname "NazarX Ground Station" \
-            -srcfolder "$app_path" \
-            -ov -format UDZO \
-            "$dmg_path" 2>/dev/null
+
+        if command -v create-dmg &>/dev/null; then
+            # Use create-dmg for professional DMG with background and layout
+            # Background is Retina (1320x800 @144dpi)
+            create-dmg \
+                --volname "$APP_DISPLAY_NAME" \
+                --background "build/dmg-background.png" \
+                --window-pos 200 120 \
+                --window-size 660 400 \
+                --icon-size 80 \
+                --text-size 12 \
+                --icon "${APP_DISPLAY_NAME}.app" 180 200 \
+                --app-drop-link 480 200 \
+                --hide-extension "${APP_DISPLAY_NAME}.app" \
+                --no-internet-enable \
+                "$dmg_path" \
+                "$app_path" 2>/dev/null || true
+        fi
+
+        # Fallback if create-dmg failed or not installed
+        if [ ! -f "$dmg_path" ]; then
+            hdiutil create -volname "$APP_DISPLAY_NAME" \
+                -srcfolder "$app_path" \
+                -ov -format UDZO \
+                "$dmg_path" 2>/dev/null
+        fi
 
         echo "[DONE] macOS ($goarch): $dmg_path"
     else

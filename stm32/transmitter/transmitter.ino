@@ -1,6 +1,6 @@
 /*
- * STM32F401 MAVLink Transmitter with BMP280 + AHT20 + MPU9250/6500/6050
- * Sends telemetry data at 10Hz via LoRa
+ * STM32F401 MAVLink Transmitter with BMP280 + AHT20 + MPU9250/6500/6050 + SD Card Logger
+ * Sends telemetry data at 10Hz via LoRa and logs to SD card
  *
  * Hardware:
  * - STM32F401CCU6 (WeAct Black Pill) or similar
@@ -11,6 +11,7 @@
  *   - MPU9250: 9-axis (accel + gyro + magnetometer)
  *   - MPU6500: 6-axis (accel + gyro)
  *   - MPU6050: 6-axis (accel + gyro)
+ * - MicroSD card module
  *
  * Connections:
  * LoRa (PA9/PA10 - Most reliable):
@@ -25,6 +26,14 @@
  * - MPU9250/6500/6050: SDA → PB7, SCL → PB6 (shared)
  * - All sensors: VCC → 3.3V, GND → GND
  *
+ * SD Card Module (SPI1 - LEFT side of board):
+ * - CS   → A4 (PA4) - 5th pin from top
+ * - CLK  → A5 (PA5) - 6th pin from top
+ * - MISO → A6 (PA6) - 7th pin from top
+ * - MOSI → A7 (PA7) - 8th pin from top
+ * - VCC  → 3V3 (RIGHT side, 3rd pin from top)
+ * - GND  → GND (RIGHT side, 1st or 2nd pin)
+ *
  * Alternative I2C (I2C2):
  * - SDA → PB11, SCL → PB10
  *
@@ -32,9 +41,17 @@
  */
 
 #include <Wire.h>
+#include <SPI.h>
+#include <SdFat.h>
 #include <Adafruit_BMP280.h>
 #include <Adafruit_AHTX0.h>
 #include <MAVLink.h>
+
+SdFat sd;
+SdCard card;
+
+// SD Card pin definition
+#define SD_CS_PIN PA4  // A4 - Chip Select for SD card
 
 // MPU9250/6500/6050 I2C registers
 #define MPU_ADDR 0x68
@@ -69,6 +86,11 @@ bool aht_ok = false;
 bool mpu_ok = false;
 bool mag_ok = false;  // Magnetometer (only on MPU9250)
 uint8_t mpu_chip_id = 0;  // Store chip ID
+
+// SD Card variables
+bool sd_ok = false;
+FsFile dataFile;
+String currentFilename;
 
 uint32_t counter = 0;
 unsigned long previousMillis = 0;
@@ -133,8 +155,69 @@ bool mag_read_raw(int16_t *mag) {
   return false;
 }
 
+// SD Card helper function
+String getNextFilename() {
+  int fileNumber = 0;
+  String filename;
+  do {
+    filename = "LOG" + String(fileNumber) + ".CSV";
+    fileNumber++;
+  } while (sd.exists(filename.c_str()) && fileNumber < 1000);
+  return filename;
+}
+
 // Orientation angles
 float roll = 0, pitch = 0, yaw = 0;
+
+// Team ID — must match ground station TEAM_ID
+#define TEAM_ID "1003"
+
+// Calibration offsets (subtracted from raw orientation at transmit time)
+float roll_offset = 0, pitch_offset = 0, yaw_offset = 0;
+
+// Command prefix: "CMD,<TEAM_ID>,"
+const String CMD_PREFIX = String("CMD,") + TEAM_ID + ",";
+
+// Handle incoming command from ground station (via MAVLink STATUSTEXT)
+// Format: CMD,<TEAM_ID>,<ACTION>[,<PARAMS>]
+void handleGroundCommand(const char* text) {
+  String cmd = String(text);
+  cmd.trim();
+
+  // Verify command prefix matches our team
+  if (!cmd.startsWith(CMD_PREFIX)) return;
+
+  // Extract the action part after "CMD,<TEAM_ID>,"
+  String action = cmd.substring(CMD_PREFIX.length());
+
+  if (action == "CAL") {
+    // Calibrate: snapshot current raw orientation as the new zero reference
+    // Next transmit will send (roll - roll_offset) = 0, etc.
+    roll_offset = roll;
+    pitch_offset = pitch;
+    yaw_offset = yaw;
+    Serial.println(F("[CMD] CAL - MPU orientation reset to zero"));
+  }
+  // TODO: add other command handlers here (ON/OFF, SIM, ST, SD)
+}
+
+// Check LoRa for incoming MAVLink commands from ground station.
+// Parses MAVLink frames and handles STATUSTEXT messages.
+void checkIncomingCommands() {
+  static mavlink_message_t rx_msg;
+  static mavlink_status_t rx_status;
+
+  while (lora.available()) {
+    uint8_t c = lora.read();
+    if (mavlink_parse_char(MAVLINK_COMM_1, c, &rx_msg, &rx_status)) {
+      if (rx_msg.msgid == MAVLINK_MSG_ID_STATUSTEXT) {
+        mavlink_statustext_t statustext;
+        mavlink_msg_statustext_decode(&rx_msg, &statustext);
+        handleGroundCommand(statustext.text);
+      }
+    }
+  }
+}
 
 void setup() {
   // Debug serial (USB)
@@ -250,6 +333,50 @@ void setup() {
   }
   delay(200);
 
+  // Initialize SD Card
+  Serial.println(F("Initializing SD card..."));
+
+  // Configure SPI pins for SD card (SPI1)
+  SPI.setMOSI(PA7);  // A7
+  SPI.setMISO(PA6);  // A6
+  SPI.setSCLK(PA5);  // A5
+  SPI.begin();
+  delay(100);
+
+  Serial.print(F("SD CS=PA4, CLK=PA5, MISO=PA6, MOSI=PA7... "));
+  if (!sd.begin(SD_CS_PIN, SD_SCK_MHZ(8))) {
+    Serial.println(F("FAILED!"));
+    Serial.println(F("Continuing without SD card logging"));
+    sd_ok = false;
+  } else {
+    Serial.println(F("OK!"));
+    sd_ok = true;
+
+    // Get card info (SdFat method)
+    uint32_t sectors = sd.card()->sectorCount();
+    uint32_t cardSize = sectors / 2048;  // 512 bytes per sector -> MB
+    Serial.print(F("  SD Card Size: "));
+    Serial.print(cardSize);
+    Serial.println(F(" MB"));
+
+    // Create new log file
+    currentFilename = getNextFilename();
+    Serial.print(F("  Log file: "));
+    Serial.println(currentFilename);
+
+    // Write CSV header
+    dataFile = sd.open(currentFilename.c_str(), FILE_WRITE);
+    if (dataFile) {
+      dataFile.println(F("Time(ms),Counter,Temp(C),Press(mbar),Alt(m),Humid(%),AccelX,AccelY,AccelZ,GyroX,GyroY,GyroZ,Roll,Pitch,Yaw"));
+      dataFile.close();
+      Serial.println(F("  CSV header written"));
+    } else {
+      Serial.println(F("  ERROR: Could not create file!"));
+      sd_ok = false;
+    }
+  }
+  delay(200);
+
   // Initialize LoRa serial
   lora.begin(57600);
 
@@ -274,6 +401,9 @@ void setup() {
 }
 
 void loop() {
+  // Check for incoming commands from ground station (non-blocking)
+  checkIncomingCommands();
+
   unsigned long currentMillis = millis();
 
   if (currentMillis - previousMillis >= interval) {
@@ -347,7 +477,7 @@ void loop() {
         while (yaw < -PI) yaw += 2 * PI;
       }
 
-      // Calculate roll and pitch from accelerometer
+      // Calculate roll and pitch from accelerometer (raw values, offsets applied at transmit)
       roll = atan2(accel_g_y, accel_g_z);
       pitch = atan2(-accel_g_x, sqrt(accel_g_y * accel_g_y + accel_g_z * accel_g_z));
     }
@@ -421,15 +551,15 @@ void loop() {
     len = mavlink_msg_to_send_buffer(buf, &msg);
     lora.write(buf, len);
 
-    // 5. Send attitude (roll, pitch, yaw)
+    // 5. Send attitude (roll, pitch, yaw) with calibration offsets applied
     mavlink_msg_attitude_pack(
       1,                                        // System ID
       MAV_COMP_ID_AUTOPILOT1,                  // Component ID
       &msg,
       millis(),                                 // time_boot_ms
-      roll,                                     // roll (radians)
-      pitch,                                    // pitch (radians)
-      yaw,                                      // yaw (radians)
+      roll - roll_offset,                       // roll (radians) - calibrated
+      pitch - pitch_offset,                     // pitch (radians) - calibrated
+      yaw - yaw_offset,                         // yaw (radians) - calibrated
       0,                                        // rollspeed (rad/s) - not used
       0,                                        // pitchspeed (rad/s) - not used
       0                                         // yawspeed (rad/s) - not used
@@ -453,23 +583,70 @@ void loop() {
     len = mavlink_msg_to_send_buffer(buf, &msg);
     lora.write(buf, len);
 
+    // Log data to SD card
+    if (sd_ok) {
+      dataFile = sd.open(currentFilename.c_str(), FILE_WRITE);
+      if (dataFile) {
+        // Time(ms),Counter,Temp(C),Press(mbar),Alt(m),Humid(%),AccelX,AccelY,AccelZ,GyroX,GyroY,GyroZ,Roll,Pitch,Yaw
+        dataFile.print(millis());
+        dataFile.print(",");
+        dataFile.print(counter);
+        dataFile.print(",");
+        dataFile.print(temperature, 2);
+        dataFile.print(",");
+        dataFile.print(pressure, 2);
+        dataFile.print(",");
+        dataFile.print(altitude, 2);
+        dataFile.print(",");
+        dataFile.print(humidity, 1);
+        dataFile.print(",");
+        dataFile.print(accel_x, 2);
+        dataFile.print(",");
+        dataFile.print(accel_y, 2);
+        dataFile.print(",");
+        dataFile.print(accel_z, 2);
+        dataFile.print(",");
+        dataFile.print(gyro_x, 2);
+        dataFile.print(",");
+        dataFile.print(gyro_y, 2);
+        dataFile.print(",");
+        dataFile.print(gyro_z, 2);
+        dataFile.print(",");
+        dataFile.print((roll - roll_offset) * 57.2958, 1);  // Convert to degrees (calibrated)
+        dataFile.print(",");
+        dataFile.print((pitch - pitch_offset) * 57.2958, 1);
+        dataFile.print(",");
+        dataFile.println((yaw - yaw_offset) * 57.2958, 1);
+        dataFile.close();
+      } else {
+        // If file open fails, disable SD logging
+        Serial.println(F("SD write error!"));
+        sd_ok = false;
+      }
+    }
+
     // Compact debug output (every 10th message to save RAM usage)
     if (counter % 10 == 0) {
       Serial.print(F("#"));
       Serial.print(counter);
       Serial.print(F(" R:"));
-      Serial.print(roll * 57.2958, 1);  // Convert to degrees
+      Serial.print((roll - roll_offset) * 57.2958, 1);  // Calibrated degrees
       Serial.print(F("° P:"));
-      Serial.print(pitch * 57.2958, 1);
+      Serial.print((pitch - pitch_offset) * 57.2958, 1);
       Serial.print(F("° Y:"));
-      Serial.print(yaw * 57.2958, 1);
+      Serial.print((yaw - yaw_offset) * 57.2958, 1);
       Serial.print(F("° | T:"));
       Serial.print(temperature, 1);
       Serial.print(F("C H:"));
       Serial.print(humidity, 1);
       Serial.print(F("% Alt:"));
       Serial.print(altitude, 1);
-      Serial.println(F("m"));
+      Serial.print(F("m"));
+      // Show SD status
+      if (sd_ok) {
+        Serial.print(F(" [SD:OK]"));
+      }
+      Serial.println();
     }
   }
 }

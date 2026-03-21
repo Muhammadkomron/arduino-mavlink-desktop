@@ -11,11 +11,11 @@ describe('DataFlow', () => {
   it('renders log entries', () => {
     const logs = [
       { timestamp: '12:00:00.000', direction: 'received', message: 'HB #1 | T:25.0°C' },
-      { timestamp: '12:00:01.000', direction: 'sent', message: 'CX,1003,CX,ON' },
+      { timestamp: '12:00:01.000', direction: 'sent', message: 'CMD,1003,ON' },
     ];
     render(<DataFlow logs={logs} />);
     expect(screen.getByText('HB #1 | T:25.0°C')).toBeInTheDocument();
-    expect(screen.getByText('CX,1003,CX,ON')).toBeInTheDocument();
+    expect(screen.getByText('CMD,1003,ON')).toBeInTheDocument();
   });
 
   it('displays timestamps', () => {

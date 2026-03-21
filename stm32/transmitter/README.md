@@ -7,12 +7,14 @@ MAVLink telemetry transmitter for STM32F401CCU6 (WeAct Black Pill) with multi-se
 - **Board**: STM32F401CCU6 (WeAct Black Pill)
 - **LoRa**: LR900 module
 - **Sensors**: BMP280, AHT20, MPU6050/6500/9250
+- **SD Card**: MicroSD card module (optional, for data logging)
 
 ## Features
 
 - MAVLink v2 protocol transmission
 - 10Hz update rate (100ms interval)
 - Multi-sensor data collection
+- **SD card data logging** (CSV format, optional)
 - Fail-safe operation (continues with available sensors)
 - Auto-detection of MPU chip type (6050/6500/9250/9255)
 - Magnetometer support (MPU9250/9255 only)
@@ -46,6 +48,19 @@ All GND      →  GND
 - AHT20 (0x38) - Humidity
 - MPU6050/6500/9250 (0x68) - IMU
 
+### SD Card Module (Optional)
+```
+SD Module    →  STM32 Pin     Pin Position (LEFT side)
+CS           →  PA4 (A4)      5th pin from top
+CLK (SCK)    →  PA5 (A5)      6th pin from top
+MISO         →  PA6 (A6)      7th pin from top
+MOSI         →  PA7 (A7)      8th pin from top
+VCC          →  3.3V          RIGHT side, 3rd pin from top
+GND          →  GND           RIGHT side, 1st or 2nd pin
+```
+
+**Note**: SD card uses hardware SPI1 interface for fast, reliable logging.
+
 ## Libraries Required
 
 Install via Arduino Library Manager:
@@ -54,10 +69,14 @@ Install via Arduino Library Manager:
 - Adafruit BMP280 Library
 - Adafruit AHTX0
 - Wire (built-in)
+- SPI (built-in)
+- SD (built-in)
 - HardwareSerial (built-in)
 ```
 
-**Note**: MPU sensor uses raw I2C (no library needed)
+**Note**:
+- MPU sensor uses raw I2C (no library needed)
+- SD card logging is optional - system works without SD card
 
 ## Board Setup
 
@@ -108,25 +127,28 @@ Install via Arduino Library Manager:
 ## Serial Monitor Output
 
 ```
-=== STM32 MAVLink Transmitter ===
+STM32 MAVLink Transmitter with BMP280 + AHT20 + MPU9250/6500/6050
+Starting initialization...
 
-Starting sensor initialization...
+MPU6500 found and configured! (6-axis)
+Initializing AHT20...
+AHT20 found!
+Initializing BMP280...
+BMP280 found!
+Initializing SD card...
+SD CS=PA4, CLK=PA5, MISO=PA6, MOSI=PA7... OK!
+  SD Card Size: 8192 MB
+  Log file: LOG0.CSV
+  CSV header written
 
-BMP280: OK (0x77)
-AHT20: OK
-MPU: Detected MPU6500 (0x70)
-MPU: 6-axis sensor (no magnetometer)
-MPU: Initialized successfully
+Setup complete! Sending MAVLink at 10Hz.
+Sensors: BMP280 + AHT20 + MPU6500 (6-axis)
 
-All sensors ready!
-I2C Speed: 100 kHz
-LoRa: 57600 baud on Serial1 (PA9/PA10)
-
-Sending MAVLink at 10Hz...
-
-#10 R:-0.6° P:0.6° Y:-0.4° | T:27.0C H:35.8% Alt:339.3m
-#20 R:-0.5° P:0.7° Y:-0.3° | T:27.1C H:35.9% Alt:339.4m
+#10 R:-0.6° P:0.6° Y:-0.4° | T:27.0C H:35.8% Alt:339.3m [SD:OK]
+#20 R:-0.5° P:0.7° Y:-0.3° | T:27.1C H:35.9% Alt:339.4m [SD:OK]
 ```
+
+**Note**: `[SD:OK]` indicator shows SD card is actively logging data.
 
 ## Data Transmitted
 
@@ -147,6 +169,79 @@ Sending MAVLink at 10Hz...
 - **Gyroscope**: MPU (°/s)
 - **Magnetometer**: MPU9250/9255 only (μT)
 - **Orientation**: Roll, Pitch, Yaw (degrees)
+
+## SD Card Data Logging
+
+### Overview
+The transmitter automatically logs all sensor data to a CSV file on the SD card at 10Hz (same rate as LoRa transmission). This provides a local backup of data and enables offline analysis.
+
+### SD Card Setup
+1. **Format SD card as FAT32**
+   - Windows: Right-click → Format → FAT32
+   - Mac: Disk Utility → Erase → MS-DOS (FAT)
+   - Linux: `sudo mkfs.vfat -F 32 /dev/sdX1`
+
+2. **SD card size**: Up to 32GB recommended (FAT32 limit)
+
+3. **Insert SD card** into module **before** powering on
+
+### CSV File Format
+Data is logged in the following format:
+
+```csv
+Time(ms),Counter,Temp(C),Press(mbar),Alt(m),Humid(%),AccelX,AccelY,AccelZ,GyroX,GyroY,GyroZ,Roll,Pitch,Yaw
+1234,1,27.45,973.12,339.25,35.8,-0.09,-0.12,11.27,-1.32,1.09,-0.29,-0.6,0.5,-5.9
+1334,2,27.46,973.14,339.27,35.9,-0.10,-0.11,11.28,-1.30,1.10,-0.28,-0.5,0.6,-5.8
+```
+
+**Column descriptions**:
+- `Time(ms)`: Milliseconds since startup
+- `Counter`: Message sequence number
+- `Temp(C)`: Temperature in Celsius
+- `Press(mbar)`: Atmospheric pressure in millibars
+- `Alt(m)`: Altitude above sea level in meters
+- `Humid(%)`: Relative humidity percentage
+- `AccelX/Y/Z`: Acceleration in m/s² (X, Y, Z axes)
+- `GyroX/Y/Z`: Rotation rate in °/s (X, Y, Z axes)
+- `Roll/Pitch/Yaw`: Orientation angles in degrees
+
+### File Naming
+- Files are automatically named: `LOG0.CSV`, `LOG1.CSV`, `LOG2.CSV`, etc.
+- System finds the next available number on startup
+- Each power cycle creates a new log file
+
+### Fail-Safe Operation
+- If SD card is **not present**: System continues normally, only LoRa transmission works
+- If SD card **fails during operation**: Logging stops, LoRa transmission continues
+- Serial monitor shows SD card status: `[SD:OK]` when logging
+
+### Data Analysis Examples
+
+**Python (pandas)**:
+```python
+import pandas as pd
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('LOG0.CSV')
+
+# Plot temperature over time
+plt.plot(df['Time(ms)'] / 1000, df['Temp(C)'])
+plt.xlabel('Time (s)')
+plt.ylabel('Temperature (°C)')
+plt.show()
+```
+
+**Excel/Google Sheets**:
+- Open CSV file directly
+- Create charts: Select columns → Insert → Chart
+- Recommended: Line chart with Time(ms) on X-axis
+
+### Storage Capacity
+At 10Hz logging rate:
+- **1 hour**: ~30KB (21,600 samples)
+- **1 day**: ~700KB (518,400 samples)
+- **1 month**: ~20MB (15,552,000 samples)
+- **8GB card**: ~13 months of continuous logging
 
 ## Configuration
 
@@ -247,6 +342,37 @@ The code automatically detects the MPU chip type:
 3. Use slower I2C clock (100kHz instead of 400kHz)
 4. Check for multiple sensors with same address
 
+### SD Card Not Detected
+**Symptom**: Serial shows "SD CS=PA4... FAILED!" or "Continuing without SD card logging"
+
+**Solution**:
+1. **Check SD card format**: Must be FAT32 (not exFAT or NTFS)
+   - Windows: Right-click SD → Format → FAT32
+   - Mac: Disk Utility → Erase → MS-DOS (FAT)
+2. **Verify wiring**:
+   - CS → PA4 (A4, 5th pin left side)
+   - CLK → PA5 (A5, 6th pin left side)
+   - MISO → PA6 (A6, 7th pin left side)
+   - MOSI → PA7 (A7, 8th pin left side)
+   - VCC → 3.3V (NOT 5V!)
+   - GND → GND
+3. **Insert SD card BEFORE power-on**
+4. **Try different SD card** (some brands incompatible)
+5. **Check SD card size**: ≤32GB recommended (FAT32 limit)
+6. **Clean SD contacts** with isopropyl alcohol
+
+### SD Card Write Errors
+**Symptom**: "SD write error!" appears during operation
+
+**Solution**:
+1. SD card may be **full** - delete old LOG files
+2. SD card may be **write-protected** (check lock switch on SD adapter)
+3. SD card may be **corrupt** - reformat as FAT32
+4. Poor connection - reseat SD card in module
+5. Try a different/higher quality SD card
+
+**Note**: System continues LoRa transmission even if SD logging fails
+
 ### No LoRa Transmission
 **Symptom**: Serial monitor works but receiver shows nothing
 
@@ -259,8 +385,8 @@ The code automatically detects the MPU chip type:
 
 ## Memory Usage
 
-**Flash**: ~45KB / 256KB (18%)
-**SRAM**: ~12KB free / 64KB (81% free)
+**Flash**: ~48KB / 256KB (19%) - with SD card support
+**SRAM**: ~10KB free / 64KB (84% used)
 
 Advantages over Arduino:
 - More flash memory (256KB vs 32KB)
@@ -277,6 +403,10 @@ Advantages over Arduino:
 | LoRa TX | PA9 | Hardware UART1 |
 | I2C SDA | PB7 | All sensors |
 | I2C SCL | PB6 | All sensors |
+| SD CS | PA4 (A4) | SPI1 Chip Select |
+| SD CLK | PA5 (A5) | SPI1 Clock |
+| SD MISO | PA6 (A6) | SPI1 Master In |
+| SD MOSI | PA7 (A7) | SPI1 Master Out |
 | USB D+ | PA12 | Debug serial |
 | USB D- | PA11 | Debug serial |
 | BOOT0 | BOOT0 | DFU mode button |

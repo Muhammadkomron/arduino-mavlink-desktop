@@ -102,7 +102,7 @@ func TestConnect_InvalidPort(t *testing.T) {
 
 func TestSendCommand_NotConnected(t *testing.T) {
 	app := backend.NewApp()
-	err := app.SendCommand("CX,1003,CX,ON")
+	err := app.SendCommand("CMD,1003,ON")
 	if err == nil {
 		t.Error("expected error when not connected")
 	}
