@@ -1,5 +1,24 @@
 .idea/
+.claude/
 *.log
-*.png
-*.jpg
-*.jpeg
+.DS_Store
+
+# Build output
+desktop/build/bin/
+desktop/build/bin/**
+
+# Node
+node_modules/
+
+# Frontend build output
+desktop/frontend/dist/
+
+# Package manager
+desktop/frontend/package-lock.json
+desktop/frontend/package.json.md5
+
+# Windows installer temp files
+desktop/build/windows/installer/tmp/
+
+# macOS
+*.dmg
