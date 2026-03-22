@@ -33,37 +33,37 @@ describe('Commands', () => {
   it('sends telemetry ON command', async () => {
     render(<Commands connected={true} />);
     fireEvent.click(screen.getByText('Telemetry ON'));
-    expect(window.go.backend.App.SendCommand).toHaveBeenCalledWith('CX,1003,CX,ON');
+    expect(window.go.backend.App.SendCommand).toHaveBeenCalledWith('CMD,1003,ON');
   });
 
   it('sends telemetry OFF command', async () => {
     render(<Commands connected={true} />);
     fireEvent.click(screen.getByText('Telemetry OFF'));
-    expect(window.go.backend.App.SendCommand).toHaveBeenCalledWith('CX,1003,CX,OFF');
+    expect(window.go.backend.App.SendCommand).toHaveBeenCalledWith('CMD,1003,OFF');
   });
 
   it('sends SIM ENABLE command', async () => {
     render(<Commands connected={true} />);
     fireEvent.click(screen.getByText('Sim Enable'));
-    expect(window.go.backend.App.SendCommand).toHaveBeenCalledWith('CX,1003,SIM,ENABLE');
+    expect(window.go.backend.App.SendCommand).toHaveBeenCalledWith('CMD,1003,SIM,1');
   });
 
   it('sends SIM DISABLE command', async () => {
     render(<Commands connected={true} />);
     fireEvent.click(screen.getByText('Sim Disable'));
-    expect(window.go.backend.App.SendCommand).toHaveBeenCalledWith('CX,1003,SIM,DISABLE');
+    expect(window.go.backend.App.SendCommand).toHaveBeenCalledWith('CMD,1003,SIM,0');
   });
 
   it('sends SIM ACTIVATE command', async () => {
     render(<Commands connected={true} />);
     fireEvent.click(screen.getByText('Sim Activate'));
-    expect(window.go.backend.App.SendCommand).toHaveBeenCalledWith('CX,1003,SIM,ACTIVATE');
+    expect(window.go.backend.App.SendCommand).toHaveBeenCalledWith('CMD,1003,SIM,2');
   });
 
   it('sends CAL command', async () => {
     render(<Commands connected={true} />);
     fireEvent.click(screen.getByText('Calibrate'));
-    expect(window.go.backend.App.SendCommand).toHaveBeenCalledWith('CX,1003,CAL');
+    expect(window.go.backend.App.SendCommand).toHaveBeenCalledWith('CMD,1003,CAL');
   });
 
   it('sends set time command with input value', async () => {
@@ -71,7 +71,7 @@ describe('Commands', () => {
     const timeInput = screen.getByPlaceholderText('HH:MM:SS');
     fireEvent.change(timeInput, { target: { value: '12:30:00' } });
     fireEvent.click(screen.getByText('Set Time'));
-    expect(window.go.backend.App.SendCommand).toHaveBeenCalledWith('CX,1003,ST,12:30:00');
+    expect(window.go.backend.App.SendCommand).toHaveBeenCalledWith('CMD,1003,ST,12:30:00');
   });
 
   it('sends set date command with input value', async () => {
@@ -79,7 +79,7 @@ describe('Commands', () => {
     const dateInput = screen.getByPlaceholderText('DD.MM.YYYY');
     fireEvent.change(dateInput, { target: { value: '21.03.2026' } });
     fireEvent.click(screen.getByText('Set Date'));
-    expect(window.go.backend.App.SendCommand).toHaveBeenCalledWith('CX,1003,SD,21.03.2026');
+    expect(window.go.backend.App.SendCommand).toHaveBeenCalledWith('CMD,1003,SD,21.03.2026');
   });
 
   it('sends pressure value via SIM command', async () => {
@@ -87,7 +87,7 @@ describe('Commands', () => {
     const pressInput = screen.getByPlaceholderText('Pressure (kPa)');
     fireEvent.change(pressInput, { target: { value: '101.325' } });
     fireEvent.click(screen.getAllByText('Send')[0]);
-    expect(window.go.backend.App.SendCommand).toHaveBeenCalledWith('CX,1003,SIM,101.325');
+    expect(window.go.backend.App.SendCommand).toHaveBeenCalledWith('CMD,1003,SIM,101.325');
   });
 
   it('clears input after sending time', async () => {

@@ -3,6 +3,9 @@ package backend
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,6 +14,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.bug.st/serial"
 )
+
+const defaultTeamID = "1003"
 
 type TelemetryData struct {
 	Counter     uint32  `json:"counter"`
@@ -53,10 +58,21 @@ type App struct {
 	packetsLost  uint32
 	cancelRead   context.CancelFunc
 	missionStart time.Time
+	teamID       string
+
+	// Child window process tracking (one per view)
+	childMu   sync.Mutex
+	children  map[string]*exec.Cmd
 }
 
 func NewApp() *App {
+	teamID := os.Getenv("TEAM_ID")
+	if teamID == "" {
+		teamID = defaultTeamID
+	}
 	return &App{
+		teamID: teamID,
+		children: make(map[string]*exec.Cmd),
 		telemetry: TelemetryData{
 			Mode:  "Flight",
 			State: "Launch Wait",
@@ -64,8 +80,108 @@ func NewApp() *App {
 	}
 }
 
+// GetTeamID returns the configured team ID
+func (a *App) GetTeamID() string {
+	return a.teamID
+}
+
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
+	StartSSEServer()
+}
+
+// StartupChild is for standalone child windows — no SSE server, no serial.
+func (a *App) StartupChild(ctx context.Context) {
+	a.ctx = ctx
+}
+
+// GetViewMode returns the CANSAT_VIEW env var so the frontend knows which
+// standalone view to render (empty string = main dashboard).
+func (a *App) GetViewMode() string {
+	return os.Getenv("CANSAT_VIEW")
+}
+
+// ToggleWindow opens the view if not open, or closes it if already open.
+// Returns true if the window is now open, false if it was closed.
+func (a *App) ToggleWindow(view string) bool {
+	a.childMu.Lock()
+	defer a.childMu.Unlock()
+
+	// If already open and still running, kill it
+	if cmd, ok := a.children[view]; ok {
+		if cmd.Process != nil {
+			cmd.Process.Kill()
+			cmd.Wait()
+		}
+		delete(a.children, view)
+		return false
+	}
+
+	// Spawn a new child window
+	exe, err := os.Executable()
+	if err != nil {
+		fmt.Println("ToggleWindow: failed to get executable path:", err)
+		return false
+	}
+
+	cmd := exec.Command(exe)
+	// Build a clean env: carry over parent env but strip Wails dev-mode
+	// vars/flags that cause the child to try binding port 34115.
+	cleanEnv := []string{"CANSAT_VIEW=" + view}
+	for _, e := range os.Environ() {
+		// Skip Wails dev-mode vars that cause port conflicts
+		if len(e) > 0 &&
+			!strings.HasPrefix(e, "WAILS_") &&
+			!strings.HasPrefix(e, "devserver=") &&
+			!strings.HasPrefix(e, "frontenddevserverurl=") &&
+			!strings.HasPrefix(e, "assetdir=") &&
+			!strings.HasPrefix(e, "loglevel=") {
+			cleanEnv = append(cleanEnv, e)
+		}
+	}
+	cmd.Env = cleanEnv
+	// Don't pipe child output to parent — suppresses Wails dev server warnings
+	if err := cmd.Start(); err != nil {
+		fmt.Println("ToggleWindow: failed to start child:", err)
+		return false
+	}
+
+	a.children[view] = cmd
+
+	// Monitor in background: auto-cleanup when window is closed by user
+	go func() {
+		cmd.Wait()
+		a.childMu.Lock()
+		// Only delete if it's still the same cmd (not replaced by a new one)
+		if curr, ok := a.children[view]; ok && curr == cmd {
+			delete(a.children, view)
+		}
+		a.childMu.Unlock()
+	}()
+
+	return true
+}
+
+// IsWindowOpen checks if a child window for the given view is currently running.
+func (a *App) IsWindowOpen(view string) bool {
+	a.childMu.Lock()
+	defer a.childMu.Unlock()
+
+	cmd, ok := a.children[view]
+	if !ok {
+		return false
+	}
+	// Check if process is still alive
+	if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
+		delete(a.children, view)
+		return false
+	}
+	return true
+}
+
+// OpenWindow is kept for backward compatibility — calls ToggleWindow.
+func (a *App) OpenWindow(view string) {
+	a.ToggleWindow(view)
 }
 
 func (a *App) Shutdown(ctx context.Context) {
@@ -193,13 +309,25 @@ func (a *App) GetMissionTime() string {
 	return fmt.Sprintf("%02d:%02d", minutes, seconds)
 }
 
-// SendCommand sends a command string via MAVLink
+// SendCommand sends a command string via MAVLink STATUSTEXT message.
+// Works universally for any command: CAL, CX ON/OFF, SIM, ST, SD, etc.
+// The transmitter parses the text to determine the action.
 func (a *App) SendCommand(cmd string) error {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	if !a.connected || a.node == nil {
 		return fmt.Errorf("not connected")
 	}
+
+	// Send command as MAVLink STATUSTEXT (max 50 chars — all our commands fit)
+	err := a.node.WriteMessageAll(&common.MessageStatustext{
+		Severity: 6, // MAV_SEVERITY_INFO
+		Text:     cmd,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to send command: %w", err)
+	}
+
 	// Log the command for the data flow
 	runtime.EventsEmit(a.ctx, "dataflow", map[string]interface{}{
 		"direction": "sent",
@@ -336,8 +464,9 @@ func (a *App) handleMessage(e *gomavlib.EventFrame) {
 		telemetry := a.telemetry
 		a.mu.RUnlock()
 
-		// Emit telemetry update to frontend
+		// Emit telemetry update to frontend and SSE clients
 		runtime.EventsEmit(a.ctx, "telemetry", telemetry)
+		BroadcastTelemetry(telemetry)
 
 		// Emit data flow log
 		runtime.EventsEmit(a.ctx, "dataflow", map[string]interface{}{

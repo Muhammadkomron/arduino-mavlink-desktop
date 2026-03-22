@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 
+const TEAM_ID = import.meta.env.VITE_TEAM_ID || '1003';
+
 export default function Commands({ connected }) {
   const [timeVal, setTimeVal] = useState('');
   const [dateVal, setDateVal] = useState('');
@@ -26,22 +28,22 @@ export default function Commands({ connected }) {
     <div className="commands-card">
       <h4>Commands</h4>
       <div className="cmd-grid">
-        <button className="btn btn-success" onClick={() => send('CX,1003,CX,ON')} disabled={!connected}>
+        <button className="btn btn-success" onClick={() => send(`CMD,${TEAM_ID},ON`)} disabled={!connected}>
           Telemetry ON
         </button>
-        <button className="btn btn-danger" onClick={() => send('CX,1003,CX,OFF')} disabled={!connected}>
+        <button className="btn btn-danger" onClick={() => send(`CMD,${TEAM_ID},OFF`)} disabled={!connected}>
           Telemetry OFF
         </button>
-        <button className="btn btn-primary" onClick={() => send('CX,1003,SIM,ENABLE')} disabled={!connected}>
+        <button className="btn btn-primary" onClick={() => send(`CMD,${TEAM_ID},SIM,1`)} disabled={!connected}>
           Sim Enable
         </button>
-        <button className="btn btn-danger" onClick={() => send('CX,1003,SIM,DISABLE')} disabled={!connected}>
+        <button className="btn btn-danger" onClick={() => send(`CMD,${TEAM_ID},SIM,0`)} disabled={!connected}>
           Sim Disable
         </button>
-        <button className="btn btn-success" onClick={() => send('CX,1003,SIM,ACTIVATE')} disabled={!connected}>
+        <button className="btn btn-success" onClick={() => send(`CMD,${TEAM_ID},SIM,2`)} disabled={!connected}>
           Sim Activate
         </button>
-        <button className="btn btn-secondary" onClick={() => send('CX,1003,CAL')} disabled={!connected}>
+        <button className="btn btn-secondary" onClick={() => send(`CMD,${TEAM_ID},CAL`)} disabled={!connected}>
           Calibrate
         </button>
 
@@ -55,7 +57,7 @@ export default function Commands({ connected }) {
           />
           <button
             className="btn btn-primary"
-            onClick={() => { send(`CX,1003,ST,${timeVal}`); setTimeVal(''); }}
+            onClick={() => { send(`CMD,${TEAM_ID},ST,${timeVal}`); setTimeVal(''); }}
             disabled={!connected}
           >
             Set Time
@@ -72,7 +74,7 @@ export default function Commands({ connected }) {
           />
           <button
             className="btn btn-primary"
-            onClick={() => { send(`CX,1003,SD,${dateVal}`); setDateVal(''); }}
+            onClick={() => { send(`CMD,${TEAM_ID},SD,${dateVal}`); setDateVal(''); }}
             disabled={!connected}
           >
             Set Date
@@ -89,7 +91,7 @@ export default function Commands({ connected }) {
           />
           <button
             className="btn btn-warning"
-            onClick={() => { send(`CX,1003,SIM,${pressVal}`); setPressVal(''); }}
+            onClick={() => { send(`CMD,${TEAM_ID},SIM,${pressVal}`); setPressVal(''); }}
             disabled={!connected}
           >
             Send

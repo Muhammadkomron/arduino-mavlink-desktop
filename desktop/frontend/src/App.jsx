@@ -17,6 +17,21 @@ const DEFAULT_TELEMETRY = {
   connected: false, mode: 'Flight', state: 'Launch Wait',
 };
 
+const SSE_URL = 'http://localhost:9877/telemetry';
+
+// Hook: subscribe to SSE telemetry stream (for standalone browser windows)
+function useSSETelemetry(setter) {
+  useEffect(() => {
+    const es = new EventSource(SSE_URL);
+    es.onmessage = (e) => {
+      try {
+        setter(JSON.parse(e.data));
+      } catch { /* ignore */ }
+    };
+    return () => es.close();
+  }, [setter]);
+}
+
 function SplashScreen({ onFinish }) {
   const [fadeOut, setFadeOut] = useState(false);
   useEffect(() => {
@@ -41,7 +56,97 @@ function SplashScreen({ onFinish }) {
   );
 }
 
+// Standalone fullscreen views for child windows
+function StandaloneGPS() {
+  const [telemetry, setTelemetry] = useState(DEFAULT_TELEMETRY);
+  const [theme] = useState(() => localStorage.getItem('theme') || 'dark');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    document.title = 'GPS Tracking - NazarX';
+  }, [theme]);
+
+  useSSETelemetry(setTelemetry);
+
+  return (
+    <div className="standalone-window">
+      <GPSMap lat={telemetry.gpsLat} lon={telemetry.gpsLon} alt={telemetry.gpsAlt} sats={telemetry.gpsSats} standalone />
+    </div>
+  );
+}
+
+function Standalone3D() {
+  const [telemetry, setTelemetry] = useState(DEFAULT_TELEMETRY);
+  const [theme] = useState(() => localStorage.getItem('theme') || 'dark');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    document.title = '3D Orientation - NazarX';
+  }, [theme]);
+
+  useSSETelemetry(setTelemetry);
+
+  return (
+    <div className="standalone-window">
+      <Rocket3D roll={telemetry.roll} pitch={telemetry.pitch} yaw={telemetry.yaw} theme={theme} standalone />
+    </div>
+  );
+}
+
+function StandaloneVideo() {
+  const [theme] = useState(() => localStorage.getItem('theme') || 'dark');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    document.title = 'Video Feed - NazarX';
+  }, [theme]);
+
+  return (
+    <div className="standalone-window">
+      <VideoFeed standalone />
+    </div>
+  );
+}
+
 export default function App() {
+  const [viewMode, setViewMode] = useState(null);
+  const [checked, setChecked] = useState(false);
+
+  useEffect(() => {
+    // Check URL hash first (browser fallback)
+    const hash = window.location.hash.replace('#', '');
+    if (hash) {
+      setViewMode(hash);
+      setChecked(true);
+      return;
+    }
+
+    // Ask Go backend for CANSAT_VIEW env var (native child windows)
+    if (window.go?.backend?.App?.GetViewMode) {
+      window.go.backend.App.GetViewMode().then((mode) => {
+        setViewMode(mode || '');
+        setChecked(true);
+      }).catch(() => {
+        setViewMode('');
+        setChecked(true);
+      });
+    } else {
+      // No Wails runtime — main dashboard
+      setViewMode('');
+      setChecked(true);
+    }
+  }, []);
+
+  if (!checked) return null; // Wait for view mode detection
+
+  if (viewMode === 'gps') return <StandaloneGPS />;
+  if (viewMode === '3d') return <Standalone3D />;
+  if (viewMode === 'video') return <StandaloneVideo />;
+
+  return <MainDashboard />;
+}
+
+function MainDashboard() {
   const [loading, setLoading] = useState(true);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
   const [telemetry, setTelemetry] = useState(DEFAULT_TELEMETRY);

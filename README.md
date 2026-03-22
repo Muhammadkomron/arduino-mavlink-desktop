@@ -1,137 +1,190 @@
-# Arduino MAVLink Desktop Telemetry System
+# NazarX Ground Station
 
-MAVLink-based telemetry system using LoRa wireless communication for real-time sensor monitoring.
+CanSat telemetry system with MAVLink protocol, LoRa wireless communication, and a desktop ground station for real-time monitoring.
 
 ## Overview
 
-This project implements a complete telemetry system with:
-- **Transmitter**: Arduino Uno or STM32F401 with multiple sensors
-- **LoRa Communication**: LR900 modules at 57600 baud
-- **Receiver**: Go application for desktop monitoring
-- **Protocol**: MAVLink v2 (ArduPilot compatible)
-
-## Features
-
-- Real-time sensor data transmission at 10Hz
-- Multi-sensor support (BMP280, AHT20, MPU6050/6500/9250)
-- Temperature, humidity, pressure, altitude monitoring
-- IMU data (accelerometer, gyroscope, magnetometer)
-- Orientation tracking (roll, pitch, yaw)
-- Fail-safe operation (works with missing sensors)
-
-## Hardware Requirements
-
-### Transmitter
-- Arduino Uno or STM32F401CCU6 (WeAct Black Pill)
-- LR900 LoRa module
-- BMP280 (pressure/temperature sensor)
-- AHT20 (humidity sensor)
-- MPU6050/6500/9250 (IMU sensor)
-
-### Receiver
-- LR900 LoRa module
-- USB to serial adapter
+- **Transmitters**: Arduino Uno or STM32F401 with BMP280, AHT20, MPU6050 sensors
+- **Communication**: LR900 LoRa modules, MAVLink v2 protocol, 57600 baud
+- **Ground Station**: Wails desktop app (Go + React) with real-time dashboard
+- **Receiver**: STM32F401 with SD card logging (standalone option)
 
 ## Project Structure
 
 ```
 arduino-mavlink-desktop/
+├── desktop/                        # Ground station desktop app
+│   ├── main.go                     # Wails entry point (fullscreen launch)
+│   ├── wails.json                  # Wails configuration
+│   ├── go.mod / go.sum             # Go dependencies
+│   ├── build.sh                    # Cross-platform build script
+│   ├── backend/
+│   │   └── app.go                  # Go backend (serial, MAVLink, telemetry)
+│   ├── frontend/
+│   │   ├── src/
+│   │   │   ├── App.jsx             # Main app with splash screen
+│   │   │   ├── components/
+│   │   │   │   ├── Header.jsx      # Title bar, theme toggle, mission timer
+│   │   │   │   ├── Sidebar.jsx     # Connection, telemetry, GPS panels
+│   │   │   │   ├── Commands.jsx    # Command buttons (telemetry, sim, cal)
+│   │   │   │   ├── ChartCard.jsx   # Real-time sensor charts
+│   │   │   │   ├── Rocket3D.jsx    # 3D orientation visualization
+│   │   │   │   ├── GPSMap.jsx      # Leaflet GPS tracking map
+│   │   │   │   ├── VideoFeed.jsx   # Camera feed
+│   │   │   │   └── DataFlow.jsx    # Telemetry data log
+│   │   │   └── __tests__/          # Frontend tests
+│   │   ├── public/                 # Logos, flag assets
+│   │   └── wailsjs/               # Auto-generated Wails bindings
+│   ├── tests/
+│   │   ├── run.sh                  # Test runner (all suites)
+│   │   └── backend/
+│   │       ├── unit/               # 23 unit tests
+│   │       ├── integration/        # 4 integration tests
+│   │       └── e2e/                # 5 e2e tests (with race detector)
+│   └── build/
+│       ├── appicon.png             # App icon
+│       ├── darwin/                 # macOS build config
+│       └── windows/                # Windows build config + NSIS installer
 ├── arduino/
-│   └── transmitter/          # Arduino Uno transmitter
-│       ├── transmitter.ino   # Arduino sketch
-│       └── README.md         # Arduino-specific docs
+│   └── transmitter/                # Arduino Uno transmitter
+│       ├── transmitter.ino
+│       └── README.md
 ├── stm32/
-│   └── transmitter/          # STM32 transmitter
-│       ├── transmitter.ino   # STM32 sketch
-│       └── README.md         # STM32-specific docs
-├── receiver.go               # Go MAVLink receiver
-└── README.md                 # This file
+│   ├── transmitter/                # STM32 transmitter
+│   │   ├── transmitter.ino
+│   │   └── README.md
+│   └── receiver/                   # STM32 receiver with SD logging
+│       └── receiver.ino
+└── README.md
 ```
 
-## Quick Start
+## Ground Station
 
-### Arduino Transmitter
+### Features
+
+- Real-time charts for altitude, voltage, pressure, temperature, orientation
+- 3D rocket model with roll/pitch/yaw visualization
+- GPS tracking on Leaflet map
+- Video feed from connected camera
+- Command panel (telemetry on/off, simulation mode, calibrate, set time/date)
+- Telemetry data flow log
+- Dark/light theme with persistent preference
+- Splash screen on launch
+- Packet loss tracking
+
+### Prerequisites
+
+- [Go 1.22+](https://go.dev/dl/)
+- [Node.js 18+](https://nodejs.org/)
+- [Wails v2](https://wails.io/): `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
+
+### Development
+
+```bash
+cd desktop
+wails dev
+```
+
+### Build
+
+```bash
+cd desktop
+
+# Build for current platform
+./build.sh mac
+
+# All options
+./build.sh mac          # macOS (current arch)
+./build.sh mac-arm64    # macOS Apple Silicon
+./build.sh mac-amd64    # macOS Intel
+./build.sh mac-universal # macOS Universal binary
+./build.sh windows      # Windows amd64
+./build.sh linux        # Linux amd64
+./build.sh all          # All platforms
+```
+
+Output goes to `desktop/build/bin/`.
+
+### Tests
+
+```bash
+cd desktop
+bash tests/run.sh
+```
+
+**110 tests total:**
+- Go unit tests (23) — app initialization, connection, commands, message processing
+- Go integration tests (4) — full telemetry pipeline, packet loss, sensor overwrite
+- Go e2e tests (5) — session lifecycle, concurrency with race detector
+- Frontend unit tests (65) — all components with Vitest + React Testing Library
+- Frontend integration tests (6) — dashboard event handling
+- Frontend e2e tests (6) — full connect → telemetry → command → disconnect flow
+
+## Transmitters
+
+### Arduino Uno
 See [arduino/transmitter/README.md](arduino/transmitter/README.md)
 
-### STM32 Transmitter
+### STM32F401
 See [stm32/transmitter/README.md](stm32/transmitter/README.md)
 
-### Receiver
-```bash
-# Run the receiver
-go run receiver.go
+## STM32 Receiver (SD Card Logging)
 
-# Expected output:
-# Temp: 27.0°C | Humidity: 35.8% | Pressure: 973.1 hPa | Altitude: 339.3m
-# Accel: (-0.09, -0.12, 11.27) m/s²
-# Gyro: (-1.32, 1.09, -0.29) °/s
-# Orientation: Roll=-0.6° Pitch=0.5° Yaw=-5.9°
-```
+1. Upload `stm32/receiver/receiver.ino` to STM32F401
+2. Insert FAT32-formatted microSD card
+3. Power on — data logs to `LOG0.CSV`, `LOG1.CSV`, etc.
+4. Monitor via USB serial at 115200 baud
 
 ## MAVLink Messages
 
-The system transmits the following MAVLink messages:
-1. `HEARTBEAT` - System status with counter
-2. `SCALED_PRESSURE` - Pressure and temperature
-3. `VFR_HUD` - Altitude data
-4. `NAMED_VALUE_FLOAT` - Humidity readings
-5. `SCALED_IMU2` - Accelerometer and gyroscope
-6. `ATTITUDE` - Roll, pitch, yaw orientation
+| Message | Data |
+|---------|------|
+| `HEARTBEAT` | System status, packet counter |
+| `SCALED_PRESSURE` | Pressure (hPa), temperature (°C) |
+| `VFR_HUD` | Altitude (m) |
+| `SYS_STATUS` | Battery voltage (V) |
+| `NAMED_VALUE_FLOAT` | Humidity (%) |
+| `SCALED_IMU2` | Accelerometer, gyroscope |
+| `ATTITUDE` | Roll, pitch, yaw (rad → °) |
+| `GPS_RAW_INT` | Lat, lon, alt, satellites, fix type |
 
-## Communication Settings
+## Hardware
 
-- **Baud Rate**: 57600
-- **Update Rate**: 10Hz (100ms interval)
-- **Protocol**: MAVLink v2
+### Sensors
+- **BMP280** — pressure, temperature, altitude
+- **AHT20** — humidity
+- **MPU6050/6500/9250** — accelerometer, gyroscope (auto-detected)
 
-## Wiring
+### Wiring
 
-### Arduino Uno
+**Arduino Uno:**
 ```
-LR900 LoRa:
-  TX → D2 (RX)
-  RX → D3 (TX)
-  VCC → 5V
-  GND → GND
-
-I2C Sensors (A4=SDA, A5=SCL):
-  BMP280: SDA, SCL, VCC (3.3V), GND
-  AHT20: SDA, SCL, VCC (3.3V), GND
-  MPU6050: SDA, SCL, VCC (3.3V), GND
+LR900: TX→D2, RX→D3, VCC→5V, GND
+I2C (A4=SDA, A5=SCL): BMP280, AHT20, MPU6050
 ```
 
-### STM32F401CCU6
+**STM32F401 Transmitter:**
 ```
-LR900 LoRa:
-  TX → PA10 (RX)
-  RX → PA9 (TX)
-  VCC → 5V
-  GND → GND
+LR900 (UART1): TX→PA10, RX→PA9, VCC→5V, GND
+I2C (PB7=SDA, PB6=SCL): BMP280, AHT20, MPU6050
+```
 
-I2C Sensors (PB7=SDA, PB6=SCL):
-  BMP280: SDA, SCL, VCC (3.3V), GND
-  AHT20: SDA, SCL, VCC (3.3V), GND
-  MPU6050/6500: SDA, SCL, VCC (3.3V), GND
+**STM32F401 Receiver:**
+```
+LR900 (UART1): TX→PA10, RX→PA9, VCC→5V, GND
+SD Card (SPI1): CS→PA4, CLK→PA5, MISO→PA6, MOSI→PA7, VCC→3V3, GND
+LED: PC13 (blinks on data)
 ```
 
 ## Troubleshooting
 
-### No data received
-1. Check LoRa connections
-2. Verify baud rate is 57600
-3. Check serial port in receiver.go
-4. Ensure transmitter LED is blinking
-
-### Sensor not found
-The system is fail-safe and will continue with available sensors. Check:
-1. I2C wiring (SDA/SCL)
-2. Sensor power (3.3V)
-3. Serial monitor for sensor status messages
-
-### MPU sensor issues
-- MPU9250 modules may actually be MPU6500 or MPU6050
-- Code auto-detects chip type (WHO_AM_I register)
-- Magnetometer only available on MPU9250/9255
+| Issue | Fix |
+|-------|-----|
+| No data received | Check LoRa wiring, verify 57600 baud, check serial port |
+| Sensor not found | System is fail-safe — check I2C wiring and 3.3V power |
+| MPU variant mismatch | Auto-detected via WHO_AM_I register |
+| SD card not detected | Format FAT32, check SPI wiring, try different card |
+| macOS app won't open | Right-click → Open, or `xattr -cr /path/to/app` |
 
 ## License
 

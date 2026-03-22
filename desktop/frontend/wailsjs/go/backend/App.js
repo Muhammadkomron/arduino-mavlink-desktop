@@ -10,62 +10,86 @@ export function Disconnect() {
   return window['go']['backend']['App']['Disconnect']();
 }
 
-export function ExportGetTelemetry() {
-  return window['go']['backend']['App']['ExportGetTelemetry']();
-}
-
-export function ExportProcessAttitude(arg1) {
-  return window['go']['backend']['App']['ExportProcessAttitude'](arg1);
-}
-
-export function ExportProcessGpsRawInt(arg1) {
-  return window['go']['backend']['App']['ExportProcessGpsRawInt'](arg1);
-}
-
-export function ExportProcessHeartbeat(arg1) {
-  return window['go']['backend']['App']['ExportProcessHeartbeat'](arg1);
-}
-
-export function ExportProcessNamedValueFloat(arg1, arg2) {
-  return window['go']['backend']['App']['ExportProcessNamedValueFloat'](arg1, arg2);
-}
-
-export function ExportProcessScaledImu2(arg1) {
-  return window['go']['backend']['App']['ExportProcessScaledImu2'](arg1);
-}
-
-export function ExportProcessScaledPressure(arg1) {
-  return window['go']['backend']['App']['ExportProcessScaledPressure'](arg1);
-}
-
-export function ExportProcessSysStatus(arg1) {
-  return window['go']['backend']['App']['ExportProcessSysStatus'](arg1);
-}
-
-export function ExportProcessVfrHud(arg1) {
-  return window['go']['backend']['App']['ExportProcessVfrHud'](arg1);
-}
-
-export function ExportSetConnected(arg1) {
-  return window['go']['backend']['App']['ExportSetConnected'](arg1);
-}
-
-export function ExportSetMissionStart(arg1) {
-  return window['go']['backend']['App']['ExportSetMissionStart'](arg1);
-}
-
 export function GetMissionTime() {
   return window['go']['backend']['App']['GetMissionTime']();
+}
+
+export function GetTeamID() {
+  return window['go']['backend']['App']['GetTeamID']();
+}
+
+export function GetTelemetry() {
+  return window['go']['backend']['App']['GetTelemetry']();
+}
+
+export function GetViewMode() {
+  return window['go']['backend']['App']['GetViewMode']();
 }
 
 export function IsConnected() {
   return window['go']['backend']['App']['IsConnected']();
 }
 
+export function IsWindowOpen(arg1) {
+  return window['go']['backend']['App']['IsWindowOpen'](arg1);
+}
+
 export function ListPorts() {
   return window['go']['backend']['App']['ListPorts']();
 }
 
+export function OpenWindow(arg1) {
+  return window['go']['backend']['App']['OpenWindow'](arg1);
+}
+
+export function ProcessAttitude(arg1) {
+  return window['go']['backend']['App']['ProcessAttitude'](arg1);
+}
+
+export function ProcessGpsRawInt(arg1) {
+  return window['go']['backend']['App']['ProcessGpsRawInt'](arg1);
+}
+
+export function ProcessHeartbeat(arg1) {
+  return window['go']['backend']['App']['ProcessHeartbeat'](arg1);
+}
+
+export function ProcessNamedValueFloat(arg1, arg2) {
+  return window['go']['backend']['App']['ProcessNamedValueFloat'](arg1, arg2);
+}
+
+export function ProcessScaledImu2(arg1) {
+  return window['go']['backend']['App']['ProcessScaledImu2'](arg1);
+}
+
+export function ProcessScaledPressure(arg1) {
+  return window['go']['backend']['App']['ProcessScaledPressure'](arg1);
+}
+
+export function ProcessSysStatus(arg1) {
+  return window['go']['backend']['App']['ProcessSysStatus'](arg1);
+}
+
+export function ProcessVfrHud(arg1) {
+  return window['go']['backend']['App']['ProcessVfrHud'](arg1);
+}
+
 export function SendCommand(arg1) {
   return window['go']['backend']['App']['SendCommand'](arg1);
+}
+
+export function SetConnected(arg1) {
+  return window['go']['backend']['App']['SetConnected'](arg1);
+}
+
+export function SetMissionStart(arg1) {
+  return window['go']['backend']['App']['SetMissionStart'](arg1);
+}
+
+export function StartupChild(arg1) {
+  return window['go']['backend']['App']['StartupChild'](arg1);
+}
+
+export function ToggleWindow(arg1) {
+  return window['go']['backend']['App']['ToggleWindow'](arg1);
 }

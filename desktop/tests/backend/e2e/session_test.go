@@ -229,14 +229,14 @@ func TestSendCommandRequiresConnection(t *testing.T) {
 	app := backend.NewApp()
 
 	commands := []string{
-		"CX,1003,CX,ON",
-		"CX,1003,CX,OFF",
-		"CX,1003,SIM,ENABLE",
-		"CX,1003,SIM,DISABLE",
-		"CX,1003,SIM,ACTIVATE",
-		"CX,1003,CAL",
-		"CX,1003,ST,12:00:00",
-		"CX,1003,SD,21.03.2026",
+		"CMD,1003,ON",
+		"CMD,1003,OFF",
+		"CMD,1003,SIM,1",
+		"CMD,1003,SIM,0",
+		"CMD,1003,SIM,2",
+		"CMD,1003,CAL",
+		"CMD,1003,ST,12:00:00",
+		"CMD,1003,SD,21.03.2026",
 	}
 
 	for _, cmd := range commands {

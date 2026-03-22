@@ -31,6 +31,54 @@ uint32_t counter = 0;
 unsigned long previousMillis = 0;
 const long interval = 100; // Send every 100ms (10Hz - SpeedyBee rate)
 
+// Team ID — must match ground station TEAM_ID
+#define TEAM_ID "1003"
+
+// Calibration offsets (in radians, subtracted from calculated angles)
+float roll_offset = 0, pitch_offset = 0, yaw_offset = 0;
+
+// Command prefix: "CMD,<TEAM_ID>,"
+const String CMD_PREFIX = String("CMD,") + TEAM_ID + ",";
+
+// Handle incoming command from ground station (via MAVLink STATUSTEXT)
+// Format: CMD,<TEAM_ID>,<ACTION>[,<PARAMS>]
+void handleGroundCommand(const char* text) {
+  String cmd = String(text);
+  cmd.trim();
+
+  // Verify command prefix matches our team
+  if (!cmd.startsWith(CMD_PREFIX)) return;
+
+  // Extract the action part after "CMD,<TEAM_ID>,"
+  String action = cmd.substring(CMD_PREFIX.length());
+
+  if (action == "CAL") {
+    // Calibrate: snapshot current orientation as the new zero
+    roll_offset = mpu.getAngleX() * 0.0174533;
+    pitch_offset = mpu.getAngleY() * 0.0174533;
+    yaw_offset = mpu.getAngleZ() * 0.0174533;
+    Serial.println(F("[CMD] CAL - MPU orientation reset to zero"));
+  }
+  // TODO: add other command handlers here (ON/OFF, SIM, ST, SD)
+}
+
+// Check LoRa for incoming MAVLink commands from ground station
+void checkIncomingCommands() {
+  static mavlink_message_t rx_msg;
+  static mavlink_status_t rx_status;
+
+  while (lora.available()) {
+    uint8_t c = lora.read();
+    if (mavlink_parse_char(MAVLINK_COMM_1, c, &rx_msg, &rx_status)) {
+      if (rx_msg.msgid == MAVLINK_MSG_ID_STATUSTEXT) {
+        mavlink_statustext_t statustext;
+        mavlink_msg_statustext_decode(&rx_msg, &statustext);
+        handleGroundCommand(statustext.text);
+      }
+    }
+  }
+}
+
 void setup() {
   // Debug serial (to computer)
   Serial.begin(9600);
@@ -95,6 +143,9 @@ void setup() {
 }
 
 void loop() {
+  // Check for incoming commands from ground station (non-blocking)
+  checkIncomingCommands();
+
   unsigned long currentMillis = millis();
 
   if (currentMillis - previousMillis >= interval) {
@@ -125,10 +176,10 @@ void loop() {
     float gyro_z = mpu.getGyroZ();
 
     // Get calculated angles (MPU6050_light uses complementary filter)
-    // Angles are in degrees, convert to radians for MAVLink
-    float roll = mpu.getAngleX() * 0.0174533;   // X angle (roll)
-    float pitch = mpu.getAngleY() * 0.0174533;  // Y angle (pitch)
-    float yaw = mpu.getAngleZ() * 0.0174533;    // Z angle (yaw)
+    // Angles are in degrees, convert to radians for MAVLink, apply calibration offsets
+    float roll = mpu.getAngleX() * 0.0174533 - roll_offset;
+    float pitch = mpu.getAngleY() * 0.0174533 - pitch_offset;
+    float yaw = mpu.getAngleZ() * 0.0174533 - yaw_offset;
 
     mavlink_message_t msg;
     uint8_t buf[64];  // Smaller buffer to save RAM
