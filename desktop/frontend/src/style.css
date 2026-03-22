@@ -477,6 +477,12 @@ html, body, #root {
 }
 .btn-secondary:hover { background: var(--bg-card-hover); }
 
+.btn-teal {
+  background: #0d9488;
+  color: #fff;
+}
+.btn-teal:hover { background: #0f766e; }
+
 .btn-purple {
   background: #9333ea;
   color: #fff;
@@ -917,9 +923,9 @@ html, body, #root {
 }
 
 .cmd-input-group {
-  grid-column: span 2;
+  grid-column: span 1;
   display: flex;
-  gap: 6px;
+  gap: 4px;
   align-items: stretch;
 }
 

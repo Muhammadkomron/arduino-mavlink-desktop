@@ -12,12 +12,14 @@ const DEFAULT_TELEMETRY = {
   counter: 0, temperature: 0, humidity: 0, pressure: 1013.0,
   altitude: 0, voltage: 0, accelX: 0, accelY: 0, accelZ: 0,
   gyroX: 0, gyroY: 0, gyroZ: 0, roll: 0, pitch: 0, yaw: 0,
-  gyroRate: 0, gpsLat: 0, gpsLon: 0, gpsAlt: 0, gpsSats: 0,
+  gyroRate: 0, magX: 0, magY: 0, magZ: 0,
+  gpsLat: 0, gpsLon: 0, gpsAlt: 0, gpsSats: 0,
   gpsFix: 0, msgCount: 0, packetsLost: 0, timestamp: '',
   connected: false, mode: 'Flight', state: 'Launch Wait',
 };
 
 const SSE_URL = 'http://localhost:9877/telemetry';
+const SSE_THEME_URL = 'http://localhost:9877/theme';
 
 // Hook: subscribe to SSE telemetry stream (for standalone browser windows)
 function useSSETelemetry(setter) {
@@ -28,6 +30,22 @@ function useSSETelemetry(setter) {
         setter(JSON.parse(e.data));
       } catch { /* ignore */ }
     };
+    return () => es.close();
+  }, [setter]);
+}
+
+// Hook: subscribe to SSE theme changes (for standalone child windows)
+function useSSETheme(setter) {
+  useEffect(() => {
+    const es = new EventSource(SSE_THEME_URL);
+    es.onmessage = (e) => {
+      const theme = e.data.trim();
+      if (theme === 'dark' || theme === 'light') {
+        setter(theme);
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+    };
+    es.onerror = () => { /* reconnects automatically */ };
     return () => es.close();
   }, [setter]);
 }
@@ -59,7 +77,7 @@ function SplashScreen({ onFinish }) {
 // Standalone fullscreen views for child windows
 function StandaloneGPS() {
   const [telemetry, setTelemetry] = useState(DEFAULT_TELEMETRY);
-  const [theme] = useState(() => localStorage.getItem('theme') || 'dark');
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -67,6 +85,7 @@ function StandaloneGPS() {
   }, [theme]);
 
   useSSETelemetry(setTelemetry);
+  useSSETheme(setTheme);
 
   return (
     <div className="standalone-window">
@@ -77,7 +96,7 @@ function StandaloneGPS() {
 
 function Standalone3D() {
   const [telemetry, setTelemetry] = useState(DEFAULT_TELEMETRY);
-  const [theme] = useState(() => localStorage.getItem('theme') || 'dark');
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -85,6 +104,7 @@ function Standalone3D() {
   }, [theme]);
 
   useSSETelemetry(setTelemetry);
+  useSSETheme(setTheme);
 
   return (
     <div className="standalone-window">
@@ -94,12 +114,14 @@ function Standalone3D() {
 }
 
 function StandaloneVideo() {
-  const [theme] = useState(() => localStorage.getItem('theme') || 'dark');
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     document.title = 'Video Feed - NazarX';
   }, [theme]);
+
+  useSSETheme(setTheme);
 
   return (
     <div className="standalone-window">
@@ -170,6 +192,10 @@ function MainDashboard() {
     setTheme(prev => {
       const next = prev === 'dark' ? 'light' : 'dark';
       localStorage.setItem('theme', next);
+      // Broadcast theme to child windows via SSE
+      if (window.go?.backend?.App?.SetTheme) {
+        window.go.backend.App.SetTheme(next);
+      }
       return next;
     });
   }, []);
@@ -256,9 +282,9 @@ function MainDashboard() {
             <ChartCard title="Temperature" data={tempHistory} value={`${telemetry.temperature.toFixed(1)} °C`} color="#ff6b6b" unit="°C" />
           </div>
           <div className="chart-row">
+            <ChartCard title="Gyro Rate" data={gyroHistory} value={`${telemetry.gyroRate.toFixed(1)} °/s`} color="#1abc9c" unit="°/s" />
             <ChartCard title="Roll" data={rollHistory} value={`${telemetry.roll.toFixed(1)} °`} color="#9b59b6" unit="°" />
             <ChartCard title="Pitch" data={pitchHistory} value={`${telemetry.pitch.toFixed(1)} °`} color="#e67e22" unit="°" />
-            <ChartCard title="Gyro Rate" data={gyroHistory} value={`${telemetry.gyroRate.toFixed(1)} °/s`} color="#1abc9c" unit="°/s" />
             <ChartCard title="Yaw" data={yawHistory} value={`${telemetry.yaw.toFixed(1)} °`} color="#e74c3c" unit="°" />
           </div>
           <div className="viz-row">

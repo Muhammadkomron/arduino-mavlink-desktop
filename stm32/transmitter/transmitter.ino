@@ -96,6 +96,18 @@ uint32_t counter = 0;
 unsigned long previousMillis = 0;
 const long interval = 100; // Send every 100ms (10Hz - ArduPilot rate)
 
+// Telemetry transmission control
+bool telemetry_enabled = false;
+
+// Simulation mode: 0 = off, 1 = enabled (standby), 2 = active (sending sim data)
+uint8_t sim_mode = 0;
+
+// Magnetometer bypass: when true, use mag for yaw; when false, use gyro integration
+// Only relevant for MPU9250/9255 which have an onboard magnetometer.
+// The I2C bypass must be enabled (MPU_INT_PIN_CFG = 0x02) for the MCU to
+// talk directly to the AK8963 magnetometer on the MPU's auxiliary I2C bus.
+bool mag_bypass_enabled = true;  // default: use magnetometer when available
+
 // MPU9250/6500/6050 helper functions
 void mpu_write_reg(uint8_t reg, uint8_t value) {
   Wire.beginTransmission(MPU_ADDR);
@@ -191,14 +203,74 @@ void handleGroundCommand(const char* text) {
   String action = cmd.substring(CMD_PREFIX.length());
 
   if (action == "CAL") {
-    // Calibrate: snapshot current raw orientation as the new zero reference
-    // Next transmit will send (roll - roll_offset) = 0, etc.
+    // Full MPU reset: zero out accumulated orientation AND set offsets
+    // This eliminates gyro drift by resetting the integrated yaw directly
     roll_offset = roll;
     pitch_offset = pitch;
     yaw_offset = yaw;
+    // Also reset the raw accumulated yaw to prevent drift buildup
+    yaw = 0;
+    yaw_offset = 0;
     Serial.println(F("[CMD] CAL - MPU orientation reset to zero"));
+  } else if (action == "ON") {
+    telemetry_enabled = true;
+    // Auto-enable magnetometer when telemetry starts
+    if (mag_ok && !mag_bypass_enabled) {
+      mag_bypass_enabled = true;
+      mpu_write_reg(MPU_INT_PIN_CFG, 0x02);
+      delay(5);
+      Wire.beginTransmission(AK8963_ADDR);
+      Wire.write(AK8963_CNTL);
+      Wire.write(0x16);
+      Wire.endTransmission();
+    }
+    Serial.println(F("[CMD] ON - Telemetry + magnetometer enabled"));
+  } else if (action == "OFF") {
+    telemetry_enabled = false;
+    // Auto-disable magnetometer when telemetry stops
+    if (mag_ok && mag_bypass_enabled) {
+      mag_bypass_enabled = false;
+      mpu_write_reg(MPU_INT_PIN_CFG, 0x00);
+    }
+    Serial.println(F("[CMD] OFF - Telemetry + magnetometer disabled"));
+  } else if (action.startsWith("SIM,")) {
+    String param = action.substring(4);
+    sim_mode = param.toInt();
+    Serial.print(F("[CMD] SIM mode set to: "));
+    Serial.println(sim_mode);
+  } else if (action.startsWith("ST,")) {
+    String timeStr = action.substring(3);
+    Serial.print(F("[CMD] ST - Set time: "));
+    Serial.println(timeStr);
+  } else if (action.startsWith("SD,")) {
+    String dateStr = action.substring(3);
+    Serial.print(F("[CMD] SD - Set date: "));
+    Serial.println(dateStr);
+  } else if (action == "BCEN") {
+    // Toggle magnetometer bypass (MPU9250/9255 only)
+    // When enabled: MCU reads AK8963 directly via I2C bypass for tilt-compensated yaw
+    // When disabled: yaw from gyro integration only (drifts but immune to magnetic interference)
+    if (mag_ok) {
+      mag_bypass_enabled = !mag_bypass_enabled;
+      if (mag_bypass_enabled) {
+        // Re-enable I2C bypass so MCU can access AK8963
+        mpu_write_reg(MPU_INT_PIN_CFG, 0x02);
+        delay(5);
+        // Restart continuous measurement on AK8963
+        Wire.beginTransmission(AK8963_ADDR);
+        Wire.write(AK8963_CNTL);
+        Wire.write(0x16);  // 16-bit, continuous mode 2
+        Wire.endTransmission();
+        Serial.println(F("[CMD] BCEN - Magnetometer ON (bypass enabled)"));
+      } else {
+        // Disable I2C bypass — AK8963 becomes inaccessible
+        mpu_write_reg(MPU_INT_PIN_CFG, 0x00);
+        Serial.println(F("[CMD] BCEN - Magnetometer OFF (gyro-only yaw)"));
+      }
+    } else {
+      Serial.println(F("[CMD] BCEN - No magnetometer on this chip"));
+    }
   }
-  // TODO: add other command handlers here (ON/OFF, SIM, ST, SD)
 }
 
 // Check LoRa for incoming MAVLink commands from ground station.
@@ -454,8 +526,8 @@ void loop() {
       gyro_y = raw_gyro[1] / 65.5;
       gyro_z = raw_gyro[2] / 65.5;
 
-      // Read magnetometer if available (MPU9250/9255 only)
-      if (mag_ok) {
+      // Read magnetometer if available and bypass enabled (MPU9250/9255 only)
+      if (mag_ok && mag_bypass_enabled) {
         int16_t raw_mag[3];
         if (mag_read_raw(raw_mag)) {
           // Convert to µT (sensitivity 0.15 µT/LSB in 16-bit mode)
@@ -481,6 +553,9 @@ void loop() {
       roll = atan2(accel_g_y, accel_g_z);
       pitch = atan2(-accel_g_x, sqrt(accel_g_y * accel_g_y + accel_g_z * accel_g_z));
     }
+
+    // Skip telemetry if disabled (but still read sensors for CAL accuracy)
+    if (!telemetry_enabled) return;
 
     // Send MAVLink messages
     mavlink_message_t msg;

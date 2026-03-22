@@ -98,6 +98,13 @@ export default function Sidebar({ telemetry, connected }) {
       </section>
 
       <section className="panel">
+        <h3>Magnetometer</h3>
+        <div className="info-row"><span className="label">X</span><span className="value">{telemetry.magX.toFixed(1)} &micro;T</span></div>
+        <div className="info-row"><span className="label">Y</span><span className="value">{telemetry.magY.toFixed(1)} &micro;T</span></div>
+        <div className="info-row"><span className="label">Z</span><span className="value">{telemetry.magZ.toFixed(1)} &micro;T</span></div>
+      </section>
+
+      <section className="panel">
         <h3>GPS</h3>
         <div className="info-row"><span className="label">Lat</span><span className="value">{telemetry.gpsLat.toFixed(4)}</span></div>
         <div className="info-row"><span className="label">Lon</span><span className="value">{telemetry.gpsLon.toFixed(4)}</span></div>

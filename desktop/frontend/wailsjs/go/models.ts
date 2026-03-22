@@ -17,6 +17,9 @@ export namespace backend {
 	    pitch: number;
 	    yaw: number;
 	    gyroRate: number;
+	    magX: number;
+	    magY: number;
+	    magZ: number;
 	    gpsLat: number;
 	    gpsLon: number;
 	    gpsAlt: number;
@@ -51,6 +54,9 @@ export namespace backend {
 	        this.pitch = source["pitch"];
 	        this.yaw = source["yaw"];
 	        this.gyroRate = source["gyroRate"];
+	        this.magX = source["magX"];
+	        this.magY = source["magY"];
+	        this.magZ = source["magZ"];
 	        this.gpsLat = source["gpsLat"];
 	        this.gpsLon = source["gpsLon"];
 	        this.gpsAlt = source["gpsAlt"];
