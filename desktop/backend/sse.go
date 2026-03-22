@@ -10,12 +10,15 @@ import (
 const ssePort = 9877
 
 type sseServer struct {
-	mu      sync.RWMutex
-	clients map[chan []byte]struct{}
+	mu           sync.RWMutex
+	clients      map[chan []byte]struct{}
+	themeMu      sync.RWMutex
+	themeClients map[chan string]struct{}
 }
 
 var sse = &sseServer{
-	clients: make(map[chan []byte]struct{}),
+	clients:      make(map[chan []byte]struct{}),
+	themeClients: make(map[chan string]struct{}),
 }
 
 // StartSSEServer starts a lightweight HTTP server for telemetry streaming to browser windows
@@ -57,6 +60,42 @@ func StartSSEServer() {
 		}
 	})
 
+	// Theme SSE endpoint — child windows subscribe to theme changes
+	mux.HandleFunc("/theme", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming not supported", http.StatusInternalServerError)
+			return
+		}
+
+		ch := make(chan string, 4)
+		sse.themeMu.Lock()
+		sse.themeClients[ch] = struct{}{}
+		sse.themeMu.Unlock()
+
+		defer func() {
+			sse.themeMu.Lock()
+			delete(sse.themeClients, ch)
+			sse.themeMu.Unlock()
+		}()
+
+		ctx := r.Context()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case theme := <-ch:
+				fmt.Fprintf(w, "data: %s\n\n", theme)
+				flusher.Flush()
+			}
+		}
+	})
+
 	// CORS preflight
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -69,6 +108,19 @@ func StartSSEServer() {
 			fmt.Printf("SSE server: %v (OK if child window)\n", err)
 		}
 	}()
+}
+
+// BroadcastTheme sends a theme change to all connected child windows
+func BroadcastTheme(theme string) {
+	sse.themeMu.RLock()
+	defer sse.themeMu.RUnlock()
+
+	for ch := range sse.themeClients {
+		select {
+		case ch <- theme:
+		default:
+		}
+	}
 }
 
 // BroadcastTelemetry sends telemetry data to all connected SSE clients

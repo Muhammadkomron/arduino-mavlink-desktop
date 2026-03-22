@@ -5,6 +5,8 @@ import {common} from '../models';
 import {time} from '../models';
 import {context} from '../models';
 
+export function CloseAllChildren():Promise<void>;
+
 export function Connect(arg1:string,arg2:number):Promise<void>;
 
 export function Disconnect():Promise<void>;
@@ -41,11 +43,15 @@ export function ProcessSysStatus(arg1:common.MessageSysStatus):Promise<void>;
 
 export function ProcessVfrHud(arg1:common.MessageVfrHud):Promise<void>;
 
+export function ResetMPU():Promise<void>;
+
 export function SendCommand(arg1:string):Promise<void>;
 
 export function SetConnected(arg1:boolean):Promise<void>;
 
 export function SetMissionStart(arg1:time.Time):Promise<void>;
+
+export function SetTheme(arg1:string):Promise<void>;
 
 export function StartupChild(arg1:context.Context):Promise<void>;
 

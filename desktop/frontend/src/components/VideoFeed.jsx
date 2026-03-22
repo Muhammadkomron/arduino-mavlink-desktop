@@ -82,10 +82,14 @@ export default function VideoFeed({ standalone }) {
 
   const [expanded, setExpanded] = useState(false);
 
+  // Poll child window status to detect native close
   useEffect(() => {
-    if (window.go?.backend?.App?.IsWindowOpen) {
+    if (!window.go?.backend?.App?.IsWindowOpen) return;
+    window.go.backend.App.IsWindowOpen('video').then(setExpanded).catch(() => {});
+    const poll = setInterval(() => {
       window.go.backend.App.IsWindowOpen('video').then(setExpanded).catch(() => {});
-    }
+    }, 2000);
+    return () => clearInterval(poll);
   }, []);
 
   const toggleWindow = useCallback(async () => {

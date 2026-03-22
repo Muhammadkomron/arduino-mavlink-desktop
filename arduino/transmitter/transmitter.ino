@@ -31,6 +31,12 @@ uint32_t counter = 0;
 unsigned long previousMillis = 0;
 const long interval = 100; // Send every 100ms (10Hz - SpeedyBee rate)
 
+// Telemetry transmission control
+bool telemetry_enabled = true;
+
+// Simulation mode: 0 = off, 1 = enabled (standby), 2 = active (sending sim data)
+uint8_t sim_mode = 0;
+
 // Team ID — must match ground station TEAM_ID
 #define TEAM_ID "1003"
 
@@ -53,13 +59,33 @@ void handleGroundCommand(const char* text) {
   String action = cmd.substring(CMD_PREFIX.length());
 
   if (action == "CAL") {
-    // Calibrate: snapshot current orientation as the new zero
-    roll_offset = mpu.getAngleX() * 0.0174533;
-    pitch_offset = mpu.getAngleY() * 0.0174533;
-    yaw_offset = mpu.getAngleZ() * 0.0174533;
+    // Full MPU reset: snapshot current orientation and reset internal angles
+    // MPU6050_light calcOffsets() resets the complementary filter baseline
+    mpu.calcOffsets();
+    roll_offset = 0;
+    pitch_offset = 0;
+    yaw_offset = 0;
     Serial.println(F("[CMD] CAL - MPU orientation reset to zero"));
+  } else if (action == "ON") {
+    telemetry_enabled = true;
+    Serial.println(F("[CMD] ON - Telemetry enabled"));
+  } else if (action == "OFF") {
+    telemetry_enabled = false;
+    Serial.println(F("[CMD] OFF - Telemetry disabled"));
+  } else if (action.startsWith("SIM,")) {
+    String param = action.substring(4);
+    sim_mode = param.toInt();
+    Serial.print(F("[CMD] SIM mode set to: "));
+    Serial.println(sim_mode);
+  } else if (action.startsWith("ST,")) {
+    String timeStr = action.substring(3);
+    Serial.print(F("[CMD] ST - Set time: "));
+    Serial.println(timeStr);
+  } else if (action.startsWith("SD,")) {
+    String dateStr = action.substring(3);
+    Serial.print(F("[CMD] SD - Set date: "));
+    Serial.println(dateStr);
   }
-  // TODO: add other command handlers here (ON/OFF, SIM, ST, SD)
 }
 
 // Check LoRa for incoming MAVLink commands from ground station
@@ -180,6 +206,9 @@ void loop() {
     float roll = mpu.getAngleX() * 0.0174533 - roll_offset;
     float pitch = mpu.getAngleY() * 0.0174533 - pitch_offset;
     float yaw = mpu.getAngleZ() * 0.0174533 - yaw_offset;
+
+    // Skip telemetry if disabled (but still read sensors for CAL accuracy)
+    if (!telemetry_enabled) return;
 
     mavlink_message_t msg;
     uint8_t buf[64];  // Smaller buffer to save RAM

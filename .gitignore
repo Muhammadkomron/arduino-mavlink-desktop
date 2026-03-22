@@ -20,5 +20,9 @@ desktop/frontend/package.json.md5
 # Windows installer temp files
 desktop/build/windows/installer/tmp/
 
+# Environment
+.env
+.env.*
+
 # macOS
 *.dmg

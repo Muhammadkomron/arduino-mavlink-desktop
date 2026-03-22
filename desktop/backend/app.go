@@ -34,6 +34,9 @@ type TelemetryData struct {
 	Pitch       float32 `json:"pitch"`
 	Yaw         float32 `json:"yaw"`
 	GyroRate    float32 `json:"gyroRate"`
+	MagX        float32 `json:"magX"`
+	MagY        float32 `json:"magY"`
+	MagZ        float32 `json:"magZ"`
 	GpsLat      float64 `json:"gpsLat"`
 	GpsLon      float64 `json:"gpsLon"`
 	GpsAlt      float32 `json:"gpsAlt"`
@@ -186,6 +189,25 @@ func (a *App) OpenWindow(view string) {
 
 func (a *App) Shutdown(ctx context.Context) {
 	a.Disconnect()
+	a.CloseAllChildren()
+}
+
+// SetTheme broadcasts a theme change to all child windows via SSE
+func (a *App) SetTheme(theme string) {
+	BroadcastTheme(theme)
+}
+
+// CloseAllChildren kills all spawned child window processes
+func (a *App) CloseAllChildren() {
+	a.childMu.Lock()
+	defer a.childMu.Unlock()
+	for view, cmd := range a.children {
+		if cmd.Process != nil {
+			cmd.Process.Kill()
+			cmd.Wait()
+		}
+		delete(a.children, view)
+	}
 }
 
 // ListPorts returns available serial ports
@@ -309,6 +331,23 @@ func (a *App) GetMissionTime() string {
 	return fmt.Sprintf("%02d:%02d", minutes, seconds)
 }
 
+// ResetMPU sends a CAL command to the transmitter and resets local orientation to zero.
+// This provides immediate visual feedback on the ground station while the transmitter recalibrates.
+func (a *App) ResetMPU() error {
+	cmd := fmt.Sprintf("CMD,%s,CAL", a.teamID)
+	err := a.SendCommand(cmd)
+	if err != nil {
+		return err
+	}
+	// Also reset local telemetry orientation so the 3D view snaps to zero immediately
+	a.mu.Lock()
+	a.telemetry.Roll = 0
+	a.telemetry.Pitch = 0
+	a.telemetry.Yaw = 0
+	a.mu.Unlock()
+	return nil
+}
+
 // SendCommand sends a command string via MAVLink STATUSTEXT message.
 // Works universally for any command: CAL, CX ON/OFF, SIM, ST, SD, etc.
 // The transmitter parses the text to determine the action.
@@ -396,6 +435,9 @@ func (a *App) ProcessScaledImu2(msg *common.MessageScaledImu2) {
 	a.telemetry.GyroY = float32(msg.Ygyro) / 17.4533
 	a.telemetry.GyroZ = float32(msg.Zgyro) / 17.4533
 	a.telemetry.GyroRate = a.telemetry.GyroX
+	a.telemetry.MagX = float32(msg.Xmag) / 10.0
+	a.telemetry.MagY = float32(msg.Ymag) / 10.0
+	a.telemetry.MagZ = float32(msg.Zmag) / 10.0
 }
 
 // ProcessAttitude handles roll, pitch, yaw data
