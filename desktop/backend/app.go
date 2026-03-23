@@ -339,11 +339,12 @@ func (a *App) ResetMPU() error {
 	if err != nil {
 		return err
 	}
-	// Also reset local telemetry orientation so the 3D view snaps to zero immediately
+	// Also reset local telemetry so the UI snaps to zero immediately
 	a.mu.Lock()
 	a.telemetry.Roll = 0
 	a.telemetry.Pitch = 0
 	a.telemetry.Yaw = 0
+	a.telemetry.Altitude = 0
 	a.mu.Unlock()
 	return nil
 }

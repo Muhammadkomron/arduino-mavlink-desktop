@@ -37,11 +37,18 @@ bool telemetry_enabled = true;
 // Simulation mode: 0 = off, 1 = enabled (standby), 2 = active (sending sim data)
 uint8_t sim_mode = 0;
 
+// Simulated pressure value (Pa, sent from ground station via SIMP command)
+float sim_pressure = 101325.0;  // Default: sea level in Pa
+bool sim_pressure_received = false;  // True once ground sends a SIMP value
+
 // Team ID — must match ground station TEAM_ID
 #define TEAM_ID "1003"
 
 // Calibration offsets (in radians, subtracted from calculated angles)
 float roll_offset = 0, pitch_offset = 0, yaw_offset = 0;
+
+// Altitude calibration: store ground-level altitude at CAL time
+float altitude_offset = 0;
 
 // Command prefix: "CMD,<TEAM_ID>,"
 const String CMD_PREFIX = String("CMD,") + TEAM_ID + ",";
@@ -65,7 +72,9 @@ void handleGroundCommand(const char* text) {
     roll_offset = 0;
     pitch_offset = 0;
     yaw_offset = 0;
-    Serial.println(F("[CMD] CAL - MPU orientation reset to zero"));
+    // Set current altitude as ground level (zero reference)
+    altitude_offset = bmp.readAltitude(1013.25);
+    Serial.println(F("[CMD] CAL - MPU + altitude reset to zero"));
   } else if (action == "ON") {
     telemetry_enabled = true;
     Serial.println(F("[CMD] ON - Telemetry enabled"));
@@ -74,9 +83,26 @@ void handleGroundCommand(const char* text) {
     Serial.println(F("[CMD] OFF - Telemetry disabled"));
   } else if (action.startsWith("SIM,")) {
     String param = action.substring(4);
-    sim_mode = param.toInt();
+    uint8_t new_mode = param.toInt();
+    sim_mode = new_mode;
+    if (sim_mode == 0) {
+      sim_pressure_received = false;  // Reset on disable
+    }
     Serial.print(F("[CMD] SIM mode set to: "));
     Serial.println(sim_mode);
+  } else if (action.startsWith("SIMP,")) {
+    // Simulated pressure command: SIMP,<pressure_in_Pa>
+    // Only accepted when simulation is active (mode 2)
+    if (sim_mode == 2) {
+      String param = action.substring(5);
+      sim_pressure = param.toFloat();
+      sim_pressure_received = true;
+      Serial.print(F("[CMD] SIMP - Sim pressure set to: "));
+      Serial.print(sim_pressure, 2);
+      Serial.println(F(" Pa"));
+    } else {
+      Serial.println(F("[CMD] SIMP rejected - sim not active"));
+    }
   } else if (action.startsWith("ST,")) {
     String timeStr = action.substring(3);
     Serial.print(F("[CMD] ST - Set time: "));
@@ -183,10 +209,19 @@ void loop() {
     aht.getEvent(&humidity_event, &temp_event);
     float humidity = humidity_event.relative_humidity;
 
-    // Read BMP280 sensor
+    // Read BMP280 sensor (or use simulated pressure when sim active)
     float temperature = bmp.readTemperature();
-    float pressure = bmp.readPressure() / 100.0F; // Convert to hPa
-    float altitude = bmp.readAltitude(1013.25);   // Calculate altitude (sea level pressure)
+    float pressure;
+    float altitude;
+    if (sim_mode == 2 && sim_pressure_received) {
+      // Simulation active: use ground-station-provided pressure
+      pressure = sim_pressure / 100.0F;  // Convert Pa to hPa
+      // Calculate altitude from simulated pressure using barometric formula
+      altitude = 44330.0 * (1.0 - pow(pressure / 1013.25, 0.190295)) - altitude_offset;
+    } else {
+      pressure = bmp.readPressure() / 100.0F; // Convert to hPa
+      altitude = bmp.readAltitude(1013.25) - altitude_offset;
+    }
 
     // Update MPU6050 readings
     mpu.update();

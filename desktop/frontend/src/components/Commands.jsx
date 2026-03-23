@@ -14,7 +14,10 @@ export default function Commands({ connected }) {
   const [pressVal, setPressVal] = useState('');
   const [telemetryOn, setTelemetryOn] = useState(false);
   const [simEnabled, setSimEnabled] = useState(false);
+  const [simActive, setSimActive] = useState(false);
+  const [csvPlaying, setCsvPlaying] = useState(false);
   const csvFileRef = useRef(null);
+  const csvTimersRef = useRef([]);
 
   const send = useCallback(async (cmd) => {
     if (!connected || !window.go) return;
@@ -25,12 +28,56 @@ export default function Commands({ connected }) {
     }
   }, [connected]);
 
+  const stopCsvPlayback = useCallback(() => {
+    csvTimersRef.current.forEach(t => clearTimeout(t));
+    csvTimersRef.current = [];
+    setCsvPlaying(false);
+  }, []);
+
   const handleCsvUpload = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      console.log('CSV file selected:', file.name);
-    }
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const lines = evt.target.result.split('\n').filter(l => l.trim());
+      // Skip header if present
+      const startIdx = lines[0].toLowerCase().includes('pressure') ? 1 : 0;
+      const values = lines.slice(startIdx).map(line => {
+        const val = parseFloat(line.split(',')[0]);
+        return isNaN(val) ? null : val;
+      }).filter(v => v !== null);
+
+      if (values.length === 0) return;
+
+      // Clear any previous playback
+      stopCsvPlayback();
+      setCsvPlaying(true);
+
+      // Send each pressure value with 1s interval
+      values.forEach((val, i) => {
+        const timer = setTimeout(() => {
+          // CSV values are in Pa (large numbers) or kPa (< 200)
+          const pa = val < 200 ? val * 1000 : val;
+          send(`CMD,${TEAM_ID},SIMP,${pa.toFixed(2)}`);
+          // Stop playing indicator after last value
+          if (i === values.length - 1) setCsvPlaying(false);
+        }, i * 1000);
+        csvTimersRef.current.push(timer);
+      });
+    };
+    reader.readAsText(file);
+    e.target.value = '';  // Reset so same file can be re-selected
   };
+
+  const sendPressure = useCallback(() => {
+    if (!pressVal) return;
+    const val = parseFloat(pressVal);
+    if (isNaN(val)) return;
+    // Input is always in kPa, convert to Pa
+    const pa = val * 1000;
+    send(`CMD,${TEAM_ID},SIMP,${pa.toFixed(2)}`);
+    setPressVal('');
+  }, [pressVal, send]);
 
   return (
     <div className="commands-card">
@@ -52,15 +99,30 @@ export default function Commands({ connected }) {
           <button className="btn btn-primary" onClick={() => { send(`CMD,${TEAM_ID},SIM,1`); setSimEnabled(true); }} disabled={!connected}>
             Sim Enable
           </button>
-        ) : (
+        ) : !simActive ? (
           <div style={{ display: 'flex', gap: '4px' }}>
-            <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => { send(`CMD,${TEAM_ID},SIM,0`); setSimEnabled(false); }} disabled={!connected}>
+            <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => {
+              send(`CMD,${TEAM_ID},SIM,0`);
+              setSimEnabled(false);
+            }} disabled={!connected}>
               Disable
             </button>
-            <button className="btn btn-success" style={{ flex: 1 }} onClick={() => send(`CMD,${TEAM_ID},SIM,2`)} disabled={!connected}>
+            <button className="btn btn-success" style={{ flex: 1 }} onClick={() => {
+              send(`CMD,${TEAM_ID},SIM,2`);
+              setSimActive(true);
+            }} disabled={!connected}>
               Activate
             </button>
           </div>
+        ) : (
+          <button className="btn btn-danger" onClick={() => {
+            send(`CMD,${TEAM_ID},SIM,0`);
+            setSimEnabled(false);
+            setSimActive(false);
+            stopCsvPlayback();
+          }} disabled={!connected}>
+            Sim Disable
+          </button>
         )}
 
         <button className="btn btn-teal" onClick={async () => {
@@ -87,10 +149,22 @@ export default function Commands({ connected }) {
         </div>
 
         <div className="cmd-input-group">
-          <input className="cmd-input" type="text" placeholder="kPa" value={pressVal} onChange={e => setPressVal(e.target.value)} />
-          <button className="btn btn-warning" onClick={() => { send(`CMD,${TEAM_ID},SIM,${pressVal}`); setPressVal(''); }} disabled={!connected}>Send</button>
+          <input
+            className="cmd-input"
+            type="text"
+            placeholder={simActive ? 'Pressure (kPa)' : 'Sim not active'}
+            value={pressVal}
+            onChange={e => setPressVal(e.target.value)}
+            disabled={!simActive}
+            onKeyDown={e => { if (e.key === 'Enter') sendPressure(); }}
+          />
+          <button className="btn btn-warning" onClick={sendPressure} disabled={!connected || !simActive}>Send</button>
           <input ref={csvFileRef} type="file" accept=".csv" onChange={handleCsvUpload} style={{ display: 'none' }} />
-          <button className="btn btn-purple" onClick={() => csvFileRef.current?.click()} disabled={!connected}>CSV</button>
+          {csvPlaying ? (
+            <button className="btn btn-danger" onClick={stopCsvPlayback}>Stop</button>
+          ) : (
+            <button className="btn btn-purple" onClick={() => csvFileRef.current?.click()} disabled={!connected || !simActive}>CSV</button>
+          )}
         </div>
       </div>
     </div>
