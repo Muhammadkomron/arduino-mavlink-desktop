@@ -78,7 +78,7 @@ export default function Sidebar({ telemetry, connected }) {
         <h3>Telemetry</h3>
         <div className="info-row"><span className="label">Voltage</span><span className="value">{telemetry.voltage.toFixed(2)} V</span></div>
         <div className="info-row"><span className="label">Altitude</span><span className="value">{telemetry.altitude.toFixed(1)} m</span></div>
-        <div className="info-row"><span className="label">Pressure</span><span className="value">{telemetry.pressure.toFixed(0)} hPa</span></div>
+        <div className="info-row"><span className="label">Pressure</span><span className="value">{(telemetry.pressure / 10).toFixed(1)} kPa</span></div>
         <div className="info-row"><span className="label">Temp</span><span className="value">{telemetry.temperature.toFixed(1)} °C</span></div>
       </section>
 

@@ -222,7 +222,7 @@ function MainDashboard() {
         };
         addPoint(setAltHistory, data.altitude);
         addPoint(setVoltHistory, data.voltage);
-        addPoint(setPressHistory, data.pressure);
+        addPoint(setPressHistory, data.pressure / 10);
         addPoint(setTempHistory, data.temperature);
         addPoint(setRollHistory, data.roll);
         addPoint(setPitchHistory, data.pitch);
@@ -278,7 +278,7 @@ function MainDashboard() {
           <div className="chart-row">
             <ChartCard title="Altitude" data={altHistory} value={`${telemetry.altitude.toFixed(1)} m`} color="#4a9eff" unit="m" />
             <ChartCard title="Voltage" data={voltHistory} value={`${telemetry.voltage.toFixed(1)} V`} color="#ffd93d" unit="V" />
-            <ChartCard title="Pressure" data={pressHistory} value={`${telemetry.pressure.toFixed(1)} kPa`} color="#6bcb77" unit="kPa" />
+            <ChartCard title="Pressure" data={pressHistory} value={`${(telemetry.pressure / 10).toFixed(1)} kPa`} color="#6bcb77" unit="kPa" />
             <ChartCard title="Temperature" data={tempHistory} value={`${telemetry.temperature.toFixed(1)} °C`} color="#ff6b6b" unit="°C" />
           </div>
           <div className="chart-row">
