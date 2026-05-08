@@ -1,0 +1,7 @@
+../Core/Src/compat_helpers.c:23:6:print_tim3_regs	3
+../Core/Src/compat_helpers.c:70:6:print_servo_pulse_us	13
+../Core/Src/compat_helpers.c:128:16:comp_T_int32	1
+../Core/Src/compat_helpers.c:138:17:comp_P_int64	2
+../Core/Src/compat_helpers.c:159:17:comp_H_int32	1
+../Core/Src/compat_helpers.c:175:5:bmp280_read_calib	3
+../Core/Src/compat_helpers.c:214:5:bmp280_read_measurement	4
