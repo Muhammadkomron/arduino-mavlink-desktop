@@ -1,0 +1,10 @@
+../Core/Src/MPUXX50.c:20:9:MPU_begin	3
+../Core/Src/MPUXX50.c:52:6:MPU_writeAccFullScaleRange	5
+../Core/Src/MPUXX50.c:85:6:MPU_writeGyroFullScaleRange	5
+../Core/Src/MPUXX50.c:118:6:MPU_readRawData	1
+../Core/Src/MPUXX50.c:130:6:MPU_calibrateGyro	4
+../Core/Src/MPUXX50.c:180:6:MPU_readProcessedData	1
+../Core/Src/MPUXX50.c:194:6:MPU_calcAttitude	1
+../Core/Src/MPUXX50.c:204:7:MPU_getRoll	1
+../Core/Src/MPUXX50.c:209:7:MPU_getPitch	1
+../Core/Src/MPUXX50.c:214:7:MPU_getYaw	1
